@@ -1,0 +1,9 @@
+**/*.d.ts
+**/*.js
+**/*.js.map
+dist/*
+node_modules/*
+package-lock.json
+yarn-error.lock
+.vscode/cscope_conf.json
+.vscode/mocha.tree.json
