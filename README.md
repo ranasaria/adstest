@@ -1,4 +1,4 @@
-# AzDataTest
+# azdata-test
 Modules for Azure Data Studio Testing.
 
 ## Utils
