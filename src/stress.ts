@@ -12,7 +12,7 @@ import { getSuiteType, SuiteType, bear, jsonDump } from './utils';
 import assert = require('assert');
 import { isString } from 'util';
 
-const logPrefix = 'AzDataTest:stress';
+const logPrefix = 'azdatatest:stress';
 const debug = require('debug')(logPrefix);
 const trace = require('debug')(`${logPrefix}:trace`);
 /**

@@ -4,6 +4,6 @@
 dist/*
 node_modules/*
 package-lock.json
-yarn-error.lock
+yarn-error.log
 .vscode/cscope_conf.json
 .vscode/mocha.tree.json

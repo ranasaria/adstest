@@ -1,5 +1,5 @@
 {
-  "name": "AzDataTest",
+  "name": "azdatatest",
   "version": "1.0.0",
   "preview": true,
   "description": "modules for stress and perf testing",
@@ -7,7 +7,7 @@
   "typings": "dist/main",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ranasaria/AzDataTest"
+    "url": "https://github.com/ranasaria/azdatatest"
   },
   "author": "ranasaria@outlook.com",
   "license": "https://raw.githubusercontent.com/Microsoft/azuredatastudio/master/LICENSE.txt",
