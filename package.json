@@ -1,17 +1,18 @@
 {
-  "name": "azdatatest",
+  "name": "adstest",
   "version": "0.0.1",
   "preview": true,
   "description": "modules for stress and perf testing",
   "main": "dist/main.js",
   "typings": "dist/main",
+  "files": ["dist"],
+  "types": "dist/main.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ranasaria/azdatatest"
+    "url": "https://github.com/ranasaria/adstest.git"
   },
   "author": "ranasaria@outlook.com",
   "license": "https://raw.githubusercontent.com/Microsoft/azuredatastudio/master/LICENSE.txt",
-  "private": false,
   "dependencies": {
     "class-validator": "^0.9.1",
     "debug": "^4.1.1",

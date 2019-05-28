@@ -2,8 +2,8 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-const debug = require('debug')('azdatatest:utils');
-const trace = require('debug')('azdatatest:utils:trace');
+const debug = require('debug')('adstest:utils');
+const trace = require('debug')('adstest:utils:trace');
 /**
  * Enumeration for various kinds of test suites that we support in our test system.
  */
