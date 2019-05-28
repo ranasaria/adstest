@@ -6,7 +6,6 @@
  * This module contains all the definitions for Stress decorators and the utility functions and definitions thereof
 */
 import { Min, Max, IsInt, validateSync, ValidationError, IsDefined } from 'class-validator';
-import 'mocha';
 import { AssertionError } from 'assert';
 import { getSuiteType, SuiteType, bear, jsonDump } from './utils';
 import assert = require('assert');
