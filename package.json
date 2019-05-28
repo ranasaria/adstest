@@ -1,11 +1,13 @@
 {
   "name": "adstest",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "preview": true,
   "description": "modules for stress and perf testing",
   "main": "dist/main.js",
   "typings": "dist/main",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "types": "dist/main.d.ts",
   "repository": {
     "type": "git",
@@ -22,10 +24,10 @@
   },
   "devDependencies": {
     "@types/chai": "3.4.34",
-    "@types/node": "7.0.43",
-    "chai": "3.5.0",    
-    "mocha": "^2.2.5",    
     "@types/mocha": "^5.2.6",
+    "@types/node": "7.0.43",
+    "chai": "3.5.0",
+    "mocha": "^2.2.5",
     "mocha-junit-reporter": "^1.17.0",
     "mocha-multi-reporters": "^1.1.7"
   },
@@ -33,5 +35,5 @@
     "test": "set TS_NODE_PROJECT=src/tsconfig.json&& mocha -r ts-node/register --color --watch-extensions tsx,ts -u tdd **/test/*.test.ts",
     "prepare": "npm run compile",
     "compile": "tsc -p ./src"
-  }  
+  }
 }
