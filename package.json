@@ -12,7 +12,7 @@
     "url": "https://github.com/ranasaria/adstest.git"
   },
   "author": "ranasaria@outlook.com",
-  "license": "https://raw.githubusercontent.com/Microsoft/azuredatastudio/master/LICENSE.txt",
+  "license": "ISC",
   "dependencies": {
     "class-validator": "^0.9.1",
     "debug": "^4.1.1",
