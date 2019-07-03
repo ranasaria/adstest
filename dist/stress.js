@@ -1,4 +1,11 @@
-"use strict";
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the Source EULA. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+/**
+ * This module contains all the definitions for Stress decorators and the utility functions and definitions thereof
+*/
+'use strict';
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -17,13 +24,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the Source EULA. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-/**
- * This module contains all the definitions for Stress decorators and the utility functions and definitions thereof
-*/
 const class_validator_1 = require("class-validator");
 const assert_1 = require("assert");
 const utils_1 = require("./utils");
@@ -82,10 +82,10 @@ class Stress {
     /**
      * Constructor allows for construction with a bunch of optional parameters
      *
-     * @param runtime - see {@link StressOptionsType}.
-     * @param dop - see {@link StressOptionsType}.
-     * @param iterations - see {@link StressOptionsType}.
-     * @param passThreshold - see {@link StressOptionsType}.
+     * @param runtime - see {@link StressOptions}.
+     * @param dop - see {@link StressOptions}.
+     * @param iterations - see {@link StressOptions}.
+     * @param passThreshold - see {@link StressOptions}.
      */
     constructor({ runtime, dop, iterations, passThreshold } = {}) {
         const trace = require('debug')(`${logPrefix}:constructor:trace`);
@@ -105,16 +105,16 @@ class Stress {
         trace(`properties of this object post full construction with given parameters are: this.runtime=${this.runtime}, this.dop=${this.dop}, this.iterations=${this.iterations}, this.passThreshold=${this.passThreshold}`);
     }
     static getPassThreshold(input) {
-        return nullNanUndefinedEmptyCoalesce(input, nullNanUndefinedEmptyCoalesce(parseFloat(process.env.StressPassThreshold), exports.DefaultStressOptions.passThreshold));
+        return utils_1.nullNanUndefinedEmptyCoalesce(input, utils_1.nullNanUndefinedEmptyCoalesce(parseFloat(process.env.StressPassThreshold), exports.DefaultStressOptions.passThreshold));
     }
     static getIterations(input) {
-        return nullNanUndefinedEmptyCoalesce(input, nullNanUndefinedEmptyCoalesce(parseInt(process.env.StressIterations), exports.DefaultStressOptions.iterations));
+        return utils_1.nullNanUndefinedEmptyCoalesce(input, utils_1.nullNanUndefinedEmptyCoalesce(parseInt(process.env.StressIterations), exports.DefaultStressOptions.iterations));
     }
     static getDop(input) {
-        return nullNanUndefinedEmptyCoalesce(input, nullNanUndefinedEmptyCoalesce(parseInt(process.env.StressDop), exports.DefaultStressOptions.dop));
+        return utils_1.nullNanUndefinedEmptyCoalesce(input, utils_1.nullNanUndefinedEmptyCoalesce(parseInt(process.env.StressDop), exports.DefaultStressOptions.dop));
     }
     static getRuntime(input) {
-        return nullNanUndefinedEmptyCoalesce(input, nullNanUndefinedEmptyCoalesce(parseFloat(process.env.StressRuntime), exports.DefaultStressOptions.runtime));
+        return utils_1.nullNanUndefinedEmptyCoalesce(input, utils_1.nullNanUndefinedEmptyCoalesce(parseFloat(process.env.StressRuntime), exports.DefaultStressOptions.runtime));
     }
     /**
      *
@@ -133,10 +133,10 @@ class Stress {
         return __awaiter(this, void 0, void 0, function* () {
             trace(`run method called with parameters: originalMethod=${utils_1.jsonDump(originalMethod)} originalObject=${utils_1.jsonDump(originalObject)} functionName=${functionName}  args=${utils_1.jsonDump(args)}`);
             trace(`run method called with StressOptions: runtime=${runtime}, dop=${dop}, iterations=${iterations}, passThreshold=${passThreshold}`);
-            runtime = nullNanUndefinedEmptyCoalesce(runtime, this.runtime);
-            dop = nullNanUndefinedEmptyCoalesce(dop, this.dop);
-            iterations = nullNanUndefinedEmptyCoalesce(iterations, this.iterations);
-            passThreshold = nullNanUndefinedEmptyCoalesce(passThreshold, this.passThreshold);
+            runtime = utils_1.nullNanUndefinedEmptyCoalesce(runtime, this.runtime);
+            dop = utils_1.nullNanUndefinedEmptyCoalesce(dop, this.dop);
+            iterations = utils_1.nullNanUndefinedEmptyCoalesce(iterations, this.iterations);
+            passThreshold = utils_1.nullNanUndefinedEmptyCoalesce(passThreshold, this.passThreshold);
             let numPasses = 0;
             let fails = [];
             let errors = [];
@@ -147,7 +147,7 @@ class Stress {
             // Setup a timer to set timedOut to true when this.runtime number of seconds have elapsed.
             //
             trace(`Setting up a timer to expire after runtime of ${runtime * 1000} milliseconds`);
-            setTimeout(() => {
+            let timer = setTimeout(() => {
                 timedOut = true;
                 trace(`flagging time out. ${runtime} seconds are up`);
             }, runtime * 1000);
@@ -162,6 +162,8 @@ class Stress {
                         utils_1.bear(); // bear (yield) to other threads so that timeout timer gets a chance to fire.
                         if (timedOut) {
                             debug(`timed out after ${i}th iteration, timeout of ${runtime} has expired `);
+                            clearTimeout(timer);
+                            timer.unref();
                             break; // break out of the loop
                         }
                     }
@@ -272,8 +274,4 @@ function stressify({ runtime, dop, iterations, passThreshold } = {}) {
     };
 }
 exports.stressify = stressify;
-function nullNanUndefinedEmptyCoalesce(value, defaultValue) {
-    // trace(`value is: ###{${value}}###, defaultValue is: ###{${defaultValue}}### `);
-    return (value === null || value === undefined || isNaN(value) || value.toString() === '') ? defaultValue : value;
-}
 //# sourceMappingURL=stress.js.map

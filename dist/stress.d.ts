@@ -48,10 +48,10 @@ export declare class Stress {
     /**
      * Constructor allows for construction with a bunch of optional parameters
      *
-     * @param runtime - see {@link StressOptionsType}.
-     * @param dop - see {@link StressOptionsType}.
-     * @param iterations - see {@link StressOptionsType}.
-     * @param passThreshold - see {@link StressOptionsType}.
+     * @param runtime - see {@link StressOptions}.
+     * @param dop - see {@link StressOptions}.
+     * @param iterations - see {@link StressOptions}.
+     * @param passThreshold - see {@link StressOptions}.
      */
     constructor({ runtime, dop, iterations, passThreshold }?: StressOptions);
     private static getPassThreshold;

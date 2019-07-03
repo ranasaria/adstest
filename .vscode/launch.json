@@ -20,13 +20,16 @@
                 "-u",
                 "tdd",
                 "**/test/*.test.ts",
+                "-g",
+                "child"
             ],
             "env": {
                 "TS_NODE_PROJECT": "src/tsconfig.json"
             },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",
-            "protocol": "inspector"
+            "protocol": "inspector",
+            "timeout": 999999
         }
     ]
 }

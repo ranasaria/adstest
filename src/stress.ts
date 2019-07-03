@@ -5,15 +5,17 @@
 /**
  * This module contains all the definitions for Stress decorators and the utility functions and definitions thereof
 */
+'use strict';
 import { Min, Max, IsInt, validateSync, ValidationError, IsDefined } from 'class-validator';
 import { AssertionError } from 'assert';
-import { getSuiteType, SuiteType, bear, jsonDump } from './utils';
+import { getSuiteType, SuiteType, bear, jsonDump, nullNanUndefinedEmptyCoalesce } from './utils';
 import assert = require('assert');
 import { isString } from 'util';
 
 const logPrefix = 'adstest:stress';
 const debug = require('debug')(logPrefix);
 const trace = require('debug')(`${logPrefix}:trace`);
+
 /**
  * Subclass of Error to wrap any Error objects caught during Stress Execution.
  */
@@ -117,10 +119,10 @@ export class Stress {
 	/**
 	 * Constructor allows for construction with a bunch of optional parameters
 	 *
-	 * @param runtime - see {@link StressOptionsType}.
-	 * @param dop - see {@link StressOptionsType}.
-	 * @param iterations - see {@link StressOptionsType}.
-	 * @param passThreshold - see {@link StressOptionsType}.
+	 * @param runtime - see {@link StressOptions}.
+	 * @param dop - see {@link StressOptions}.
+	 * @param iterations - see {@link StressOptions}.
+	 * @param passThreshold - see {@link StressOptions}.
 	 */
 	constructor({ runtime, dop, iterations, passThreshold }: StressOptions = {}) {
 		const trace = require('debug')(`${logPrefix}:constructor:trace`);
@@ -201,7 +203,7 @@ export class Stress {
 		// Setup a timer to set timedOut to true when this.runtime number of seconds have elapsed.
 		//
 		trace(`Setting up a timer to expire after runtime of ${runtime * 1000} milliseconds`);
-		setTimeout(() => {
+		let timer: NodeJS.Timer = setTimeout(() => {
 			timedOut = true;
 			trace(`flagging time out. ${runtime} seconds are up`);
 		}, runtime * 1000);
@@ -217,6 +219,8 @@ export class Stress {
 					bear(); // bear (yield) to other threads so that timeout timer gets a chance to fire.
 					if (timedOut) {
 						debug(`timed out after ${i}th iteration, timeout of ${runtime} has expired `);
+						clearTimeout(timer);
+						timer.unref();
 						break; // break out of the loop
 					}
 				}
@@ -298,9 +302,4 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 		//
 		return memberDescriptor;
 	};
-}
-
-function nullNanUndefinedEmptyCoalesce(value: number, defaultValue: number): number {
-	// trace(`value is: ###{${value}}###, defaultValue is: ###{${defaultValue}}### `);
-	return (value === null || value === undefined || isNaN(value) || value.toString() === '' ) ? defaultValue : value;
 }
