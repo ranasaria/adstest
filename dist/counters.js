@@ -37,8 +37,6 @@ const moving_averages_1 = require("moving-averages");
 const simple_statistics_1 = require("simple-statistics");
 const writeFileAsync = util_1.promisify(fs.writeFile);
 const logPrefix = 'adstest:counters';
-//const debug = require('debug')(logPrefix);
-//const trace = require('debug')(`${logPrefix}:trace`);
 /**
  * Subclass of Error to wrap any Error objects caught during Counters Execution.
  */

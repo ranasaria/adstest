@@ -46,12 +46,12 @@ export declare function toCapitalizedCase(inputString: string): string;
  */
 export declare function nullNanUndefinedEmptyCoalesce(value: number, defaultValue: number): number;
 /**
- * returns a booelean that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or undefined.
+ * returns a boolean that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or undefined.
  * else it returns true if the input string is (case insensitive) "true", "1", "on", or "yes"
  * @param value - the input value to check for trueness. If it is (case insensitive) "true", "1", "on", or "yes" then true is returned, else {@link defaultValue} is returned if it is null or undefined else false is returned.
- * @param defaultValue - the value to return if the input is null, or undefined.
+ * @param defaultValue - the value to return if the input is null, or undefined. If not specified then 'false' is assumed.
  */
-export declare function getBoolean(value: boolean | string, defaultValue: boolean): boolean;
+export declare function getBoolean(value: boolean | string, defaultValue?: boolean): boolean;
 /**
  * Defines an interface to collect the counters for a given process or for the whole system
  *
@@ -87,20 +87,20 @@ export interface ProcessInfo {
 /**
  * returns the parent PID of the given {@link pid}
  * @param pid - the PID whose parent PID needs to be returned.
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  */
 export declare function getParentPid(pid?: number, processesList?: ProcessInfo[]): Promise<number>;
 export declare const getProcessList: () => Promise<ProcessInfo[]>;
 /**
  * returns the parent ProcessInfo object of the given {@link pid}
  * @param pid - the pid for which the parent object needs to be returned
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  */
 export declare function getParent(pid: number, processesList?: ProcessInfo[]): Promise<ProcessInfo>;
 /**
- * returns an array of ProcessInfo objects which are within the children subtree of the given process. The subtree contains ProcessInfo objects rescursively corresponding input {@link inputPid}, its children pids, its grandchildren pids and so on.
- * @param inputPid - returns an array of ProcessInfo objects rescursively corresponding this pid, its children pids, its grandchildren pids and so on.
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * returns an array of ProcessInfo objects which are within the children subtree of the given process. The subtree contains ProcessInfo objects recursively corresponding input {@link inputPid}, its children pids, its grandchildren pids and so on.
+ * @param inputPid - returns an array of ProcessInfo objects recursively corresponding this pid, its children pids, its grandchildren pids and so on.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  * @param getTreeForParent - if true we get children subtree of {@link inputPid}'s parent. If the parent is the process id 0 then this option is ignored.
  */
 export declare function getChildrenTree(inputPid?: number, getTreeForParent?: boolean, processesList?: ProcessInfo[]): Promise<Array<ProcessInfo>>;
@@ -110,6 +110,6 @@ export declare function getChildrenTree(inputPid?: number, getTreeForParent?: bo
 export declare function getCounters(processesToTrack: ProcessInfo[]): Promise<ProcessStats[]>;
 /**
  * returns a random string that has {@link length} number of characters.
- * @param length
+ * @param length - specifies the length of the random string generated.
  */
 export declare function randomString(length?: number): string;

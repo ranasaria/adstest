@@ -114,12 +114,12 @@ function nullNanUndefinedEmptyCoalesce(value, defaultValue) {
 }
 exports.nullNanUndefinedEmptyCoalesce = nullNanUndefinedEmptyCoalesce;
 /**
- * returns a booelean that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or undefined.
+ * returns a boolean that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or undefined.
  * else it returns true if the input string is (case insensitive) "true", "1", "on", or "yes"
  * @param value - the input value to check for trueness. If it is (case insensitive) "true", "1", "on", or "yes" then true is returned, else {@link defaultValue} is returned if it is null or undefined else false is returned.
- * @param defaultValue - the value to return if the input is null, or undefined.
+ * @param defaultValue - the value to return if the input is null, or undefined. If not specified then 'false' is assumed.
  */
-function getBoolean(value, defaultValue) {
+function getBoolean(value, defaultValue = false) {
     if (value === undefined || value === null) {
         return defaultValue;
     }
@@ -137,7 +137,7 @@ exports.getBoolean = getBoolean;
 /**
  * returns the parent PID of the given {@link pid}
  * @param pid - the PID whose parent PID needs to be returned.
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  */
 function getParentPid(pid = process.pid, processesList = null) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -164,7 +164,7 @@ exports.getProcessList = () => __awaiter(this, void 0, void 0, function* () {
 /**
  * returns the parent ProcessInfo object of the given {@link pid}
  * @param pid - the pid for which the parent object needs to be returned
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  */
 function getParent(pid, processesList = null) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -190,9 +190,9 @@ function getParent(pid, processesList = null) {
 }
 exports.getParent = getParent;
 /**
- * returns an array of ProcessInfo objects which are within the children subtree of the given process. The subtree contains ProcessInfo objects rescursively corresponding input {@link inputPid}, its children pids, its grandchildren pids and so on.
- * @param inputPid - returns an array of ProcessInfo objects rescursively corresponding this pid, its children pids, its grandchildren pids and so on.
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * returns an array of ProcessInfo objects which are within the children subtree of the given process. The subtree contains ProcessInfo objects recursively corresponding input {@link inputPid}, its children pids, its grandchildren pids and so on.
+ * @param inputPid - returns an array of ProcessInfo objects recursively corresponding this pid, its children pids, its grandchildren pids and so on.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  * @param getTreeForParent - if true we get children subtree of {@link inputPid}'s parent. If the parent is the process id 0 then this option is ignored.
  */
 function getChildrenTree(inputPid = process.pid, getTreeForParent = true, processesList = null) {
@@ -241,16 +241,12 @@ function getChildrenTree(inputPid = process.pid, getTreeForParent = true, proces
         const pendingPromises = [];
         while (p = toProcess.pop()) {
             childrenList.push(p);
-            // if (populateCommandLine) {
-            // 	pendingPromises.push(setCommandLine(p));
-            // }
             trace(`p:${exports.jsonDump(p)}`);
             const childrenOfP = childrenMap[p.pid];
             trace("childrenOfP:", childrenOfP);
             if (childrenOfP !== undefined && childrenOfP !== null) {
                 childrenOfP.forEach(c => toProcess.push(c));
             }
-            //toProcess.push(...childrenOfP); //add all nodes that are children of process 'p' to the 'toProcess' list.
         }
         yield Promise.all(pendingPromises); //wait for all pending promises to finish
         trace("childrenTree:", exports.jsonDump(childrenList));
@@ -269,11 +265,11 @@ function getCounters(processesToTrack) {
 exports.getCounters = getCounters;
 /**
  * returns a random string that has {@link length} number of characters.
- * @param length
+ * @param length - specifies the length of the random string generated.
  */
 function randomString(length = 8) {
     // ~~ is double bitwise not operator which is a faster substitute for Math.floor() for positive numbers.
-    //	Techinically ~~ just removes everything to the right of decimal point.
+    //	Technically ~~ just removes everything to the right of decimal point.
     //
     return [...Array(length)].map(i => (~~(Math.random() * 36)).toString(36)).join('');
 }

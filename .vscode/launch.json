@@ -21,7 +21,7 @@
                 "tdd",
                 "**/test/*.test.ts",
                 "-g",
-                "child"
+                "Chart"
             ],
             "env": {
                 "TS_NODE_PROJECT": "src/tsconfig.json"

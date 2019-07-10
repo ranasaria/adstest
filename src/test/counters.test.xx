@@ -1,0 +1,264 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the Source EULA. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+'use strict';
+import { ValidationError } from 'class-validator';
+import 'mocha';
+import { DefaultCouters.ChartsOptions, Couters.Charts, chartsify, Couters.ChartsOptions, Couters.ChartsResult } from '../charts';
+import { bear, sleep, jsonDump, runOnCodeLoad } from '../utils';
+import assert = require('assert');
+import { AssertionError } from 'assert';
+
+const debug = require('debug')('unittest:charts');
+const trace = require('debug')('unittest:charts:trace');
+
+suite('Couters.Charts automation unit tests', function () {
+	//Environment Variable Tests
+	//
+	const absentValues = ['deleted', undefined, null, ''];
+	let testId = 1;
+
+	// Test values to verify Couters.ChartsOptions configured by environment variables and or constructor parameters
+	//
+	function getCouters.ChartsParams(): Couters.ChartsParamType[] {
+		return [
+			{
+				environmentVariableName: 'Couters.ChartsRuntime',
+				chartsOptionName: 'runtime',
+				tooLow: -0.1 / Math.random(),
+				tooHigh: Couters.Charts.MaxRuntime + 0.1 / Math.random(),
+				valid: Math.random() * Couters.Charts.MaxRuntime,
+				invalid: 'abracadabra'
+			},
+			{
+				environmentVariableName: 'Couters.ChartsDop',
+				chartsOptionName: 'dop',
+				tooLow: Math.floor(-0.1 / Math.random()),
+				tooHigh: Math.ceil(Couters.Charts.MaxDop + 0.1 / Math.random()),
+				valid: Math.min(1, Math.floor(Math.random() * Couters.Charts.MaxDop)),
+				invalid: 'abracadabra'
+			},
+			{
+				environmentVariableName: 'Couters.ChartsIterations',
+				chartsOptionName: 'iterations',
+				tooLow: Math.floor(-0.1 / Math.random()),
+				tooHigh: Math.ceil(Couters.Charts.MaxIterations + 0.1 / Math.random()),
+				valid: Math.floor(Math.random() * Couters.Charts.MaxIterations),
+				invalid: 'abracadabra'
+			},
+			{
+				environmentVariableName: 'Couters.ChartsPassThreshold',
+				chartsOptionName: 'passThreshold',
+				tooLow: -0.1 / Math.random(),
+				tooHigh: Couters.Charts.MaxPassThreshold + 0.1 / Math.random(),
+				valid: Math.random() * Couters.Charts.MaxPassThreshold,
+				invalid: 'abracadabra'
+			}
+		];
+	}
+	const chartsParams: Couters.ChartsParamType[] = getCouters.ChartsParams();
+
+	// Tests for environment variable corresponding to Couters.ChartsOptions not specified (absent)
+	//
+	chartsParams.forEach(x => {
+		[...absentValues, x.invalid].forEach(valueDim => {
+			test(`environmentCouters.ChartsOption Test:${testId++}:: environmentVariable ${x.environmentVariableName} set to ##{${valueDim}}## should default to ${DefaultCouters.ChartsOptions[x.chartsOptionName]}`, async function () {
+				let origEnvironmentVariableValue: string = process.env[x.environmentVariableName];
+				try {
+					if (valueDim === 'deleted') {
+						delete process.env[x.environmentVariableName];
+						trace(`deleing env[${x.environmentVariableName}]`);
+					} else {
+						process.env[x.environmentVariableName] = valueDim;
+						trace(`setting env[${x.environmentVariableName}] to: ${valueDim}`);
+					}
+					const actualOption = (new Couters.Charts())[x.chartsOptionName];
+					trace(`Actual ${x.chartsOptionName} on a newly constructed Couters.Charts object evaluated to: ${actualOption}`);
+					assert.equal(actualOption, DefaultCouters.ChartsOptions[x.chartsOptionName]);
+				}
+				finally {
+					process.env[x.environmentVariableName] = origEnvironmentVariableValue;
+				}
+			});
+		});
+	});
+
+	// Tests for environment variable corresponding to Couters.ChartsOptions set to a invalid, too high or too low value
+	//
+	chartsParams.forEach(x => {
+		[x.tooLow, x.tooHigh].forEach(invalidValue => {
+			test(`environmentCouters.ChartsOption Test:${testId++}:: environmentVariable ${x.environmentVariableName} set to ##{${invalidValue}}## should result in a ValidationError`, async function () {
+				let origEnvironmentVariableValue: string = process.env[x.environmentVariableName];
+				try {
+					process.env[x.environmentVariableName] = invalidValue.toString();
+					trace(`setting env[${x.environmentVariableName}] to: ${invalidValue}`);
+					new Couters.Charts();
+					assert(false, "The test did not throw when it was expected to");
+				}
+				catch (errors) {
+					trace(`Exception caught:${errors}::${jsonDump(errors)}, each is being verified to be ValidationError type and is being swallowed`);
+					[...errors].forEach(err => assert(err instanceof ValidationError));
+				}
+				finally {
+					process.env[x.environmentVariableName] = origEnvironmentVariableValue;
+				}
+			});
+		});
+	});
+
+	// Tests for environment variable corresponding to Couters.ChartsOptions set to a valid value
+	//
+	chartsParams.forEach(x => {
+		[x.valid].forEach(validValue => {
+			test(`environmentCouters.ChartsOption Test:${testId++}:: environmentVariable ${x.environmentVariableName} set to ##{${validValue}}## should set the created object's ${x.chartsOptionName} property to ${validValue}`, async function () {
+				let origEnvironmentVariableValue: string = process.env[x.environmentVariableName];
+				try {
+					process.env[x.environmentVariableName] = validValue.toString();
+					trace(`setting env[${x.environmentVariableName}] to: ${validValue}`);
+					const actualOption = (new Couters.Charts())[x.chartsOptionName];
+					trace(`Actual ${x.chartsOptionName} on a newly constructed Couters.Charts object evaluated to: ${actualOption}`);
+					assert.equal(actualOption, validValue);
+				}
+				finally {
+					process.env[x.environmentVariableName] = origEnvironmentVariableValue;
+				}
+			});
+		});
+	});
+
+	// Tests for passing null/empty, too high, too low or invalid value as Couters.ChartsOption paratmeter to Couters.Charts constructor
+	//
+	chartsParams.forEach(x => {
+		[...absentValues, x.tooLow, x.tooHigh, x.invalid].filter(s => s !== 'deleted').forEach(badValue => {
+			test(`constructorCouters.ChartsOption Test:${testId++}:: constructor parameter ${x.chartsOptionName} set to ##{${badValue}}## should result in a ValidationError`, async function () {
+				try {
+					let option: Couters.ChartsOptions = DefaultCouters.ChartsOptions;
+					option[x.chartsOptionName] = badValue;
+					trace(`Couters.ChartsOptions object being passed to charts constructor is:${jsonDump(option)}`);
+					trace(`Constructing a Couters.Charts object with constructor parameter ${x.chartsOptionName} set to ##{${badValue}}##`);
+					new Couters.Charts(option);
+					assert(false, "The test did not throw when it was expected to");
+				}
+				catch (errors) {
+					trace(`Exception caught:${errors}::${jsonDump(errors)}, each is being verified to be ValidationError type and is being swallowed`);
+					[...errors].forEach(err => assert(err instanceof ValidationError));
+				}
+			});
+		});
+	});
+
+	// Tests for passing a valid value as Couters.ChartsOption parameter to Couters.Charts constructor
+	// Corresponding environment variables are as set to random default valid values as well. These tests ensure that the values passed into
+	// constructor are the ones that are finally set.
+	//
+	const environmentVariableValidValuesForCouters.ChartsOptions = getCouters.ChartsParams();
+	trace(`environmentVariableValidValuesForCouters.ChartsOptions::${jsonDump(environmentVariableValidValuesForCouters.ChartsOptions)}`);
+	chartsParams.forEach(x => {
+		test(`constructorCouters.ChartsOption Test:${testId++}:: constructor parameter ${x.chartsOptionName} set to ##{${x.valid}}## should set the created object's ${x.chartsOptionName} property to ${x.valid}`, async function () {
+			const origEnvironmentValues = {};
+			try {
+				environmentVariableValidValuesForCouters.ChartsOptions.forEach(x => {
+					trace(`saving origEnvironmentValues process.env[x.environmentVariableName]=${process.env[x.environmentVariableName]} in origEnvironmentValues[x.environmentVariableName]`);
+					origEnvironmentValues[x.environmentVariableName] = process.env[x.environmentVariableName];
+					trace(`origEnvironmentValues[x.environmentVariableName] is now ${origEnvironmentValues[x.environmentVariableName]}`);
+					trace(`setting process.env[x.environmentVariableName] to ${x.valid}`);
+					process.env[x.environmentVariableName] = x.valid.toString();
+				});
+				let option: Couters.ChartsOptions = { runtime: undefined, dop: undefined, iterations: undefined, passThreshold: undefined };
+				option[x.chartsOptionName] = x.valid;
+				trace(`Constructing a Couters.Charts object with constructor parameter ${x.chartsOptionName} set to ##{${x.valid}}##`);
+				const actualOption = (new Couters.Charts(option))[x.chartsOptionName];
+				trace(`Actual ${x.chartsOptionName} on a newly constructed Couters.Charts object evaluated to: ${actualOption}`);
+				assert.equal(actualOption, x.valid);
+			}
+			finally {
+				environmentVariableValidValuesForCouters.ChartsOptions.forEach(x => {
+					process.env[x.environmentVariableName] = origEnvironmentValues[x.environmentVariableName];
+				});
+			}
+		});
+	});
+
+	// Basic Positive test for canonical use case.
+	//
+	test(`Positive Test:${testId++}:: ensures multiple threads and iterations gets performed as expected`, async function () {
+		debug('invoking basicTest()');
+		const chartsifier = new Couters.ChartsifyTester();
+		let retVal: Couters.ChartsResult = await chartsifier.basicTest();
+		debug(`test basicTest done, total invocations=${chartsifier.t}`);
+		debug(`test retVal is ${jsonDump(retVal)}`);
+		assert(retVal.numPasses === Couters.ChartsifyTester.dop * Couters.ChartsifyTester.iter, `total invocations should be ${Couters.ChartsifyTester.dop * Couters.ChartsifyTester.iter}`);
+	});
+
+	// Positive test to verify the error and fail counts returned are accurate.
+	//
+	test(`Positive Test:${testId++}:: verifies Pass, Fail, Error counts of charts execution`, async function () {
+		debug('invoking testCouters.ChartsStats()');
+		const chartsifier = new Couters.ChartsifyTester();
+		let retVal: Couters.ChartsResult = await chartsifier.testCouters.ChartsStats();
+		debug(`test testCouters.ChartsStats done, total invocations=${chartsifier.t}`);
+		debug(`test retVal is ${jsonDump(retVal)}`);
+		assert(retVal.numPasses + retVal.fails.length + retVal.errors.length === Couters.ChartsifyTester.dop * Couters.ChartsifyTester.iter, `total invocations should be ${Couters.ChartsifyTester.dop * Couters.ChartsifyTester.iter}`);
+		assert.equal(retVal.fails.length, chartsifier.f, `Number of failures does not match the expected`);
+		assert.equal(retVal.errors.length, chartsifier.e, `Number of errors does not match the expected`);
+	});
+
+	// Positive test to verify that the passThreshold not exceeded results in a pass.
+	//
+	test(`Positive Test:${testId++}:: verifies passThreshold met does not result in error being thrown`, async function () {
+		assert.doesNotThrow(async () => {
+			debug('invoking passThresholdMet()');
+			const chartsifier = new Couters.ChartsifyTester();
+			let retVal: Couters.ChartsResult = await chartsifier.passThresholdMet();
+			debug(`test testCouters.ChartsStats done, total invocations=${chartsifier.t}`);
+			debug(`test retVal is ${jsonDump(retVal)}`);
+			assert(retVal.numPasses + retVal.fails.length + retVal.errors.length === Couters.ChartsifyTester.dop * Couters.ChartsifyTester.iter, `total invocations should be ${Couters.ChartsifyTester.dop * Couters.ChartsifyTester.iter}`);
+			assert.equal(retVal.fails.length, chartsifier.f, `Number of failures does not match the expected`);
+			assert.equal(retVal.errors.length, chartsifier.e, `Number of errors does not match the expected`);
+		}, `passThreshold should have been met and the test should have passed`);
+	});
+
+	// Positive test to verify that the passThreshold not met results in an assertion.
+	//
+	test(`Positive Test:${testId++}:: verifies passThreshold failed does result in error being thrown`, async function () {
+		const chartsifier = new Couters.ChartsifyTester();
+		try {
+			debug('invoking passThresholdFailed()');
+			await chartsifier.passThresholdFailed();
+			assert(false, "Error was not thrown when one was expected");
+		}
+		catch (err) {
+			debug(`test testCouters.ChartsStats done, total invocations=${chartsifier.t}`);
+			trace(`Exception caught:${err}::${jsonDump(err)}, each is being verified to be AssertionError type and is being swallowed`);
+			assert(err instanceof AssertionError);
+		}
+	});
+
+	// Verifies that timer fires to end the test when runTime expires and number of iterations are not up.
+	//
+	test(`Positive Test:${testId++}:: verifies that timer fires to end the test when runTime expires and number of iterations are not up.`, async function () {
+		debug('invoking timerTest()');
+		let timeOut: number = Couters.ChartsifyTester.runtime; //seconds
+		let timeOutExceeded: boolean = false;
+		let testDone: boolean = false;
+		// setup a timer to flag timeOutExceeded when we have waited for 1.3*timeOut amount of time.
+		// This test also assert that the test is done when this timeout expires.
+		//
+		let timer: NodeJS.Timer = setTimeout(() => {
+			timeOutExceeded = true;
+			assert(testDone, `test was not done even after ${1.4 * timeOut} seconds when runtime configured was ${timeOut} seconds`)
+		}, timeOut * 1.4 * 1000);
+
+		const chartsifier = new Couters.ChartsifyTester();
+		let retVal: Couters.ChartsResult = await chartsifier.timeOutTest();
+		testDone = true;
+		clearTimeout(timer);
+		timer.unref();
+		debug(`test timeOutTest done, total invocations=${chartsifier.t}`);
+		debug(`test retVal is ${jsonDump(retVal)}`);
+		assert(!timeOutExceeded, `timeOut of 1.4 times ${timeOut} seconds has been exceeded while executing the test`);
+		assert(retVal.numPasses <= Couters.Charts.MaxIterations, `total invocations should less than ${Couters.Charts.MaxIterations}`);
+	});
+});

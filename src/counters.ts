@@ -20,8 +20,7 @@ const writeFileAsync = promisify(fs.writeFile);
 
 
 const logPrefix = 'adstest:counters';
-//const debug = require('debug')(logPrefix);
-//const trace = require('debug')(`${logPrefix}:trace`);
+
 /**
  * Subclass of Error to wrap any Error objects caught during Counters Execution.
  */

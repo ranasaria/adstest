@@ -16,19 +16,21 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * This module contains all the definitions for drawing charts and writing them to a file.
 */
 const chartjs_node_canvas_1 = require("chartjs-node-canvas");
+const logPrefix = 'adstest:counters:charts';
+const debug = require('debug')(logPrefix);
 /**
  *
  *
  * @export
- * @param {string} file
- * @param {any[]} xData
- * @param {[]} lines
- * @param {string} [fileType='png']
+ * @param {any[]} xData - array of labels (the x - coordinates/labels of the points)
+ * @param {LineData[]} lines - array of {@link LineData} objects
+ * @param {string} [fileType='png'] - supported values are 'png' or 'jpeg'. 'jpg' is considered synonym of 'jpeg'
+ * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-function writeChartToFile(file, xData, lines, fileType = 'png') {
+function writeChartToFile(xData, lines, fileType = 'png', file) {
     return __awaiter(this, void 0, void 0, function* () {
-        let stream;
+        //	let stream: { pipe: (arg0: any) => void; };
         const configuration = {
             // See https://www.chartjs.org/docs/latest/configuration        
             type: 'line',
@@ -39,32 +41,49 @@ function writeChartToFile(file, xData, lines, fileType = 'png') {
         };
         const randomColor = require('randomcolor');
         lines.forEach((line) => {
-            const color = randomColor({
-                format: 'rgb' // e.g. 'rgb(225,200,20)'
-            });
+            const color = require('color')(randomColor({ luminosity: 'bright' }));
             configuration.data.datasets.push({
-                fillColor: `rgba(${color[0]},${color[1]},${color[2]},0.5)`,
-                pointColor: `rgba(${color[0]},${color[1]},${color[2]},1)`,
-                strokeColor: `rgba(${color[0]},${color[1]},${color[2]},1)`,
+                //fillColor: `${color.alpha(0.5)}`,
+                fill: false,
+                pointColor: `${color.alpha(1).darken(0.5)}`,
+                strokeColor: `${color.alpha(1).lighten(0.1)}`,
                 label: line.label,
                 data: line.data,
             });
         });
-        (() => __awaiter(this, void 0, void 0, function* () {
-            const width = 1600; //px
-            const height = 900; //px
-            const canvasRenderService = new chartjs_node_canvas_1.CanvasRenderService(width, height, (ChartJS) => {
-                ChartJS.defaults.global.elements.line.fill = true;
-                ChartJS.defaults.line.spanGaps = true;
-            });
-            stream = canvasRenderService.renderToStream(configuration);
-        }))();
-        const fs = require('fs');
-        const out = fs.createWriteStream(file);
-        stream.pipe(out);
-        out.on('finish', () => console.log('The chart file was created.'));
-        return;
+        const width = 1600; //px
+        const height = 900; //px
+        const canvasRenderService = new chartjs_node_canvas_1.CanvasRenderService(width, height, (ChartJS) => {
+            ChartJS.defaults.global.elements.line.fill = true;
+            ChartJS.defaults.line.spanGaps = true;
+            ChartJS.defaults.global.defaultColor = 'rgba(255,255,0,0.1)';
+        });
+        const mimeType = getMimeType(fileType);
+        const image = yield canvasRenderService.renderToBuffer(configuration, mimeType);
+        if (file) {
+            const fs = require('fs');
+            let fd;
+            try {
+                fd = fs.openSync(file, 'w');
+                fs.writeSync(fd, image);
+                debug(`The chart file:${file} was written out.`);
+            }
+            finally {
+                fs.closeSync(fd);
+            }
+        }
+        return image;
     });
 }
 exports.writeChartToFile = writeChartToFile;
+function getMimeType(fileType) {
+    switch (fileType.toLowerCase()) {
+        case 'jpeg':
+        case 'jpg':
+            return 'image/jpeg';
+        case 'png':
+        default:
+            return 'image/png';
+    }
+}
 //# sourceMappingURL=charts.js.map

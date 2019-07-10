@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  *
  *
@@ -12,10 +13,10 @@ export interface LineData {
  *
  *
  * @export
- * @param {string} file
- * @param {any[]} xData
- * @param {[]} lines
- * @param {string} [fileType='png']
+ * @param {any[]} xData - array of labels (the x - coordinates/labels of the points)
+ * @param {LineData[]} lines - array of {@link LineData} objects
+ * @param {string} [fileType='png'] - supported values are 'png' or 'jpeg'. 'jpg' is considered synonym of 'jpeg'
+ * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-export declare function writeChartToFile(file: string, xData: any[], lines: LineData[], fileType?: string): Promise<void>;
+export declare function writeChartToFile(xData: any[], lines: LineData[], fileType: string, file: string): Promise<Buffer>;

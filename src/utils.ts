@@ -102,12 +102,12 @@ export function nullNanUndefinedEmptyCoalesce(value: number, defaultValue: numbe
 }
 
 /**
- * returns a booelean that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or undefined.
+ * returns a boolean that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or undefined.
  * else it returns true if the input string is (case insensitive) "true", "1", "on", or "yes"
  * @param value - the input value to check for trueness. If it is (case insensitive) "true", "1", "on", or "yes" then true is returned, else {@link defaultValue} is returned if it is null or undefined else false is returned.
- * @param defaultValue - the value to return if the input is null, or undefined.
+ * @param defaultValue - the value to return if the input is null, or undefined. If not specified then 'false' is assumed.
  */
-export function getBoolean(value: boolean | string, defaultValue: boolean): boolean {
+export function getBoolean(value: boolean | string, defaultValue: boolean = false): boolean {
 	if (value === undefined || value === null) {
 		return defaultValue;
 	}
@@ -159,7 +159,7 @@ export interface ProcessInfo {
 /**
  * returns the parent PID of the given {@link pid}
  * @param pid - the PID whose parent PID needs to be returned.
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  */
 export async function getParentPid(pid: number = process.pid, processesList: ProcessInfo[] = null): Promise<number> {
 	const debugPrefix: string = `${tracePrefix}:getParentPid`;
@@ -186,7 +186,7 @@ export const getProcessList = async (): Promise<ProcessInfo[]> => {
 /**
  * returns the parent ProcessInfo object of the given {@link pid}
  * @param pid - the pid for which the parent object needs to be returned
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  */
 export async function getParent(pid: number, processesList: ProcessInfo[] = null): Promise<ProcessInfo> {
 	const debugPrefix: string = `${tracePrefix}:getParent`;
@@ -210,9 +210,9 @@ export async function getParent(pid: number, processesList: ProcessInfo[] = null
 }
 
 /**
- * returns an array of ProcessInfo objects which are within the children subtree of the given process. The subtree contains ProcessInfo objects rescursively corresponding input {@link inputPid}, its children pids, its grandchildren pids and so on. 
- * @param inputPid - returns an array of ProcessInfo objects rescursively corresponding this pid, its children pids, its grandchildren pids and so on.
- * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If ommited then system process list is searched.
+ * returns an array of ProcessInfo objects which are within the children subtree of the given process. The subtree contains ProcessInfo objects recursively corresponding input {@link inputPid}, its children pids, its grandchildren pids and so on. 
+ * @param inputPid - returns an array of ProcessInfo objects recursively corresponding this pid, its children pids, its grandchildren pids and so on.
+ * @param processesList - optional cached list of ProcessInfo object in which to search for parents. If omitted then system process list is searched.
  * @param getTreeForParent - if true we get children subtree of {@link inputPid}'s parent. If the parent is the process id 0 then this option is ignored.
  */
 export async function getChildrenTree(inputPid: number = process.pid, getTreeForParent: boolean = true, processesList: ProcessInfo[] = null): Promise<Array<ProcessInfo>> {
@@ -261,16 +261,12 @@ export async function getChildrenTree(inputPid: number = process.pid, getTreeFor
 	const pendingPromises: Promise<any>[] = [];
 	while (p = toProcess.pop()) {
 		childrenList.push(p);
-		// if (populateCommandLine) {
-		// 	pendingPromises.push(setCommandLine(p));
-		// }
 		trace(`p:${jsonDump(p)}`);
 		const childrenOfP: ProcessInfo[] = childrenMap[p.pid];
 		trace("childrenOfP:", childrenOfP);
 		if (childrenOfP !== undefined && childrenOfP !== null) {
 			childrenOfP.forEach(c => toProcess.push(c));
 		}
-		//toProcess.push(...childrenOfP); //add all nodes that are children of process 'p' to the 'toProcess' list.
 	}
 	await Promise.all(pendingPromises); //wait for all pending promises to finish
 	trace("childrenTree:", jsonDump(childrenList));
@@ -286,11 +282,11 @@ export async function getCounters(processesToTrack: ProcessInfo[]): Promise<Proc
 
 /**
  * returns a random string that has {@link length} number of characters.
- * @param length 
+ * @param length - specifies the length of the random string generated.
  */
 export function randomString(length: number = 8): string {
 	// ~~ is double bitwise not operator which is a faster substitute for Math.floor() for positive numbers.
-	//	Techinically ~~ just removes everything to the right of decimal point.
+	//	Technically ~~ just removes everything to the right of decimal point.
 	//
 	return [...Array(length)].map(i => (~~(Math.random() * 36)).toString(36)).join('');
 }
