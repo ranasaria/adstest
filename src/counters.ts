@@ -23,40 +23,6 @@ const writeFileAsync = promisify(fs.writeFile);
 const logPrefix = 'adstest:counters';
 
 /**
- * Subclass of Error to wrap any Error objects caught during Counters Execution.
- */
-export class CountersError extends Error {
-	inner: Error | any;
-	static code: string = 'ERR_COUNTERS';
-
-	constructor(error?: any) {
-		super();
-		this.name = CountersError.code;
-		this.inner = error;
-		if (error instanceof Error) {
-			this.message = error.message;
-			this.stack = error.stack;
-		} else if (error instanceof String) {
-			this.message = error.valueOf();
-			try {
-				throw new Error();
-			} catch (e) {
-				this.stack = e.stack;
-			}
-		} else if (isString(error)) {
-			this.message = error;
-			try {
-				throw new Error();
-			} catch (e) {
-				this.stack = e.stack;
-			}
-		} else {
-			this.message = 'unknown counters error';
-		}
-	}
-}
-
-/**
  * A data structure to hold all the computed statistics for a test runs.
  * These are the various computed metrics for the test that we spit out.
  * @export
@@ -87,7 +53,7 @@ export interface ComputedStatistics {
  * @param elapsed - ms since the start, of the process/test/system depending on context.
  * @param timestamp - ms since epoch.
  */
-export interface ProcessStatistics {
+export interface ProcessStatisticsCollection {
 	cpu: number[];
 	memory: number[];
 	ppid: number;
@@ -97,7 +63,7 @@ export interface ProcessStatistics {
 	timestamp: number[];
 }
 
-export interface ProcessStatisticsSingle {
+export interface ProcessStatistics {
 	cpu: number;
 	memory: number;
 	ppid: number;
@@ -236,26 +202,26 @@ export class Counters {
 	/**
 	 * the collection of counters for this object corresponding to {@link pid}, and {@link includeParent}
 	 *
-	 * @type {Map<number,ProcessStatistics>}
+	 * @type {Map<number,ProcessStatisticsCollection>}
 	 * @memberof Counters
 	 */
-	public collection: Map<number, ProcessStatistics> = new Map<number, ProcessStatistics>();
+	public collection: Map<number, ProcessStatisticsCollection> = new Map<number, ProcessStatisticsCollection>();
 
-	/**
+	/**yarn
 	 * the simple moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
 	 *
-	 * @type {Map<number,ProcessStatistics>}
+	 * @type {Map<number,ProcessStatisticsCollection>}
 	 * @memberof Counters
 	 */
-	public smaOver4Collection: Map<number, ProcessStatistics> = new Map<number, ProcessStatistics>();
+	public smaOver4Collection: Map<number, ProcessStatisticsCollection> = new Map<number, ProcessStatisticsCollection>();
 
 	/**
 	 * the exponential moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
 	 *
-	 * @type {Map<number,ProcessStatistics>}
+	 * @type {Map<number,ProcessStatisticsCollection>}
 	 * @memberof Counters
 	 */
-	public emaOver4Collection: Map<number, ProcessStatistics> = new Map<number, ProcessStatistics>();
+	public emaOver4Collection: Map<number, ProcessStatisticsCollection> = new Map<number, ProcessStatisticsCollection>();
 
 	/**
 	 * the computed statistics on the collected results. These are consistent with the number we need to submit to performance frameworks for baselining the results.
@@ -327,15 +293,15 @@ export class Counters {
 	 * If {@link dumpToChart} was set then it dumps out charts corresponding to the data collected.
 	 */
 	public async stop(): Promise<void> {
-		this.stopPopulatingProcessInfos();
-		this.stopCollecting();
+		await this.stopPopulatingProcessInfos();
+		await this.stopCollecting();
 		pidusage.clear();
 		const promises: Promise<void>[] = [];
 
 		if (this.includeMovingAverages) {
 			await this.computeMovingAverages();
 		}
-		await Promise.all()
+
 		await this.computeTotals();
 		await this.computePublishStatistics();
 		if (this.dumpToFile) {
@@ -358,41 +324,57 @@ export class Counters {
 	}
 
 	private async writeCharts(): Promise<void> {
+		const trace = require('debug')(`${logPrefix}:writeCharts:trace`);
 		let promises: Promise<void>[] = [];
 		[Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc: ProcessInfo) => {
 			let file = `${this.getFileNamePrefix(proc)}_chart.png`;
-			promises.push(this.writeChart(file, this.collection[proc.pid]));
+			trace(`chart file name: ${file}`);
+			if (this.collection[proc.pid]) {
+				// if we have collected data for this process then write Chart for it.
+				promises.push(this.writeChart(file, this.collection[proc.pid]));
+			}
 			if (this.includeMovingAverages) {
 				file = `${this.getFileNamePrefix(proc)}_sma_chart.png`;
-				promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
+				trace(`sma chart file name: ${file}`);
+				if (this.smaOver4Collection[proc.pid]) {
+					// if we have simple moving average data computed for this process then  write Chart for it.
+					promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
+				}
 				file = `${this.getFileNamePrefix(proc)}_ema_chart.png`;
-				promises.push(this.writeChart(file, this.emaOver4Collection[proc.pid]));
+				trace(`ema chart file name: ${file}`);				
+				if (this.emaOver4Collection[proc.pid]) {
+					// if we have exponential moving average data computed for this process then  write Chart for it.	
+					promises.push(this.writeChart(file, this.emaOver4Collection[proc.pid]));
+				}
 			}
 		});
+		trace(`waiting for all chart files to be written out ...`);
 		await Promise.all(promises);
-		throw new Error("Method not implemented.");
 	}
 
-	private async writeChart(file: string, processStats: ProcessStatistics): Promise<void> {
+	private async writeChart(file: string, processCollection: ProcessStatisticsCollection): Promise<void> {
+		const trace = require('debug')(`${logPrefix}:writeChart:trace`);
+		trace(`processStats=${jsonDump(processCollection)}`);
 		const xKey = 'elapsed';
-		const xData: number[] = processStats[xKey];
+		const xData: number[] = processCollection[xKey];
 		const xAxisLabel = `${xKey}(${ProcessStatisticsUnits[xKey]})`;
 		const lines: LineData[] = [];
 		const title = path.parse(file).name; //get just file name without directory paths and extension
-		Object.keys(processStats)
-			.filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp')
+		Object.keys(processCollection)
+			.filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp' && key !== 'pid' && key !== 'ppid')
 			.forEach(key => {
 				lines.push({
 					label: `${key}(${ProcessStatisticsUnits[key]})`,
-					data: processStats[key]
+					data: processCollection[key]
 				});
 			});
+		trace(`xData:${jsonDump(xData)}, lines:${jsonDump(lines)}, xAxisLabel: ${xAxisLabel}, file:${file}, title:${title}`);
 		await writeChartToFile(xData, lines, 'png', xAxisLabel, file, title);
 	}
 
 	private async writeCollectionData(): Promise<void> {
 		let promises: Promise<void>[] = [];
-		[Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc: ProcessInfo) => {
+		[Counters.TotalsProcessInfo, ...this.processesToTrack].filter(proc => this.collection[proc.pid]).forEach((proc: ProcessInfo) => {
 			let file = `${this.getFileNamePrefix(proc)}_data.json`;
 			promises.push(writeFileAsync(file, jsonDump(this.collection[proc.pid])));
 			if (this.includeMovingAverages) {
@@ -441,36 +423,43 @@ export class Counters {
 	// flag for collecting the statistics of the  processes that we are tracking.
 	private countersCollectionInProgress: boolean = false;
 
-	private stopPopulatingProcessInfos(): void {
+	private async stopPopulatingProcessInfos(): Promise<void> {
 		clearInterval(this.processesToTrackTimer);
 		if (this.processesToTrackTimer) {
 			this.processesToTrackTimer.unref();
 			this.processesToTrackTimer = null;
 		}
+		await this.processesToTrackUpdationPromise;
+
 	}
-	private stopCollecting(): void {
+
+	private async stopCollecting(): Promise<void> {
+		await this.countersCollectionPromise;
 		clearInterval(this.countersTimer);
 		if (this.countersTimer) {
 			this.countersTimer.unref();
 			this.countersTimer = null;
 		}
+		await this.countersCollectionPromise;
 	}
 
 	private async startPopulatingProcessInfos(): Promise<void> {
 		assert(this.processesToTrackTimer === null, `the processesToTrackTimer should be null when we startPopulatingProcessInfos`);
-		const getProcessInfos = async () => { 			
-				this.processesToTrack = await getChildrenTree(this.pid, this.includeParent);
+		const getProcessInfos = async () => {
+
+			this.processesToTrack = await getChildrenTree(this.pid, this.includeParent);
 		};
-		// kickoff the collection of processes to track an await them to be collected
+		// kickoff the collection of processes to track and await 
+		// them to be collected for the first time so that processesToTrack is initialized
 		this.processesToTrackUpdationPromise = getProcessInfos();
 		await this.processesToTrackUpdationPromise;
 		// set a timer to keep getting processes to track at regular intervals.
-		this.processesToTrackTimer = setInterval(()=> {
+		this.processesToTrackTimer = setInterval(() => {
 			// start updating processesToTrack unless we are already doing one.
 			if (!this.processesToTrackUpdationInProgress) {
-				this.processesToTrackUpdationInProgress = true;	
+				this.processesToTrackUpdationInProgress = true;
 				this.processesToTrackUpdationPromise = getProcessInfos();
-				this.processesToTrackUpdationInProgress = false;				
+				this.processesToTrackUpdationInProgress = false;
 			}
 		}, Counters.ProcessInfoUpdationInterval);
 	}
@@ -478,7 +467,7 @@ export class Counters {
 	private async startCollecting(): Promise<void> {
 		assert(this.countersTimer === null, `the countersTimer should be null when we startCollecting`);
 		const collectCounters = async () => {
-			const cs: ProcessStatisticsSingle = {
+			const cs: ProcessStatistics = {
 				cpu: (osu.cpu.average()).avgTotal,
 				memory: os.totalmem() - os.freemem(),
 				ppid: undefined,
@@ -486,15 +475,20 @@ export class Counters {
 				elapsed: os.uptime() * 1000,
 				timestamp: Date.now()
 			};
-			[cs, ...await this.getCounters()].forEach(singleProcessStatistics => {
-				Object.keys(singleProcessStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
-					if (!this.collection[singleProcessStatistics.pid]) {
-						this.collection[singleProcessStatistics.pid] = {
-							pid: singleProcessStatistics.pid,
-							ppid: singleProcessStatistics.ppid
+			[cs, ...await this.getCounters()].forEach(processStatistics => {
+				const trace = require('debug')(`${logPrefix}:collectCounters:trace`);
+				Object.keys(processStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
+					if (!this.collection[processStatistics.pid]) {
+						this.collection[processStatistics.pid] = {
+							pid: processStatistics.pid,
+							ppid: processStatistics.ppid
 						};
 					}
-					this.collection[singleProcessStatistics.pid][prop] = this.collection[singleProcessStatistics.pid][prop] ? this.collection[singleProcessStatistics.pid][prop].push(singleProcessStatistics[prop]) : [singleProcessStatistics[prop]];
+					if (!this.collection[processStatistics.pid][prop]) {
+						this.collection[processStatistics.pid][prop] = [];
+					}
+					trace(`prop: ${prop}, propColl: ${jsonDump(this.collection[processStatistics.pid][prop])}`);
+					this.collection[processStatistics.pid][prop].push(processStatistics[prop]);
 				});
 			});
 		};
@@ -505,7 +499,7 @@ export class Counters {
 			// start collecting counters unless we are already collecting one set.
 			if (!this.countersCollectionInProgress) {
 				this.countersCollectionInProgress = true;
-				this.countersCollectionPromise = collectCounters(); 
+				this.countersCollectionPromise = collectCounters();
 				this.countersCollectionInProgress = false;
 			}
 
@@ -517,6 +511,7 @@ export class Counters {
 		const trace = require('debug')(`${logPrefix}:computeTotals:trace`);
 		// Totals are stored in a record corresponding to {@link Counters.TotalsProcessInfo}
 		trace(`collection: ${jsonDump(this.collection)}`);
+		trace(`collection.keys: ${jsonDump(Object.keys(this.collection))}`);
 		this.collection[Counters.TotalsProcessInfo.pid] = {
 			cpu: [],
 			memory: [],
@@ -526,25 +521,29 @@ export class Counters {
 			elapsed: this.collection[this.pid].elapsed, // elapsed time are same across all process so just refer to the one for the current process.
 			timestamp: this.collection[this.pid].timestamp, // timestamps  are same across all process so just refer to the one for the current process.
 		};
+		trace(`this.collection: ${jsonDump(this.collection)}`);
 		// compute and store totals for each timestamp value. 
 		for (let i in this.collection[Counters.TotalsProcessInfo.pid].timestamp) {
 			let cpu: number = 0;
 			let memory: number = 0;
 			let ctime: number = 0;
 			this.processesToTrack.forEach(proc => {
-				cpu += this.collection[proc.pid].cpu[i];
-				memory += this.collection[proc.pid].memory[i];
-				ctime += this.collection[proc.pid].ctime[i];
+				// we have collected anything for this process then add its stats to the totals
+				if (this.collection[proc.pid]) {
+					cpu += this.collection[proc.pid].cpu[i];
+					memory += this.collection[proc.pid].memory[i];
+					ctime += this.collection[proc.pid].ctime[i];
+				}
 			});
 			this.collection[Counters.TotalsProcessInfo.pid].cpu[i] = cpu;
 			this.collection[Counters.TotalsProcessInfo.pid].memory[i] = memory;
 			this.collection[Counters.TotalsProcessInfo.pid].ctime[i] = ctime;
 		}
+		trace(`this.collection[Counters.TotalsProcessInfo.pid]: ${jsonDump(this.collection[Counters.TotalsProcessInfo.pid])}`)
 	}
 
 	private async computePublishStatistics(): Promise<void> {
-
-		const totalsStats: ProcessStatistics = this.collection[-1];
+		const totalsStats: ProcessStatisticsCollection = this.collection[-1];
 		const datapoints: number = totalsStats.timestamp.length;
 		let p95: number;
 		let p90: number;
@@ -588,9 +587,9 @@ export class Counters {
 		};
 	}
 
-	private async getCounters(): Promise<ProcessStatisticsSingle[]> {
+	private async getCounters(): Promise<ProcessStatistics[]> {
 		const processStatistics: any = await pidusage([...this.processesToTrack.map(p => p.pid)]);
-		return [...Object.values<ProcessStatisticsSingle>(processStatistics)];
+		return [...Object.values<ProcessStatistics>(processStatistics)];
 	}
 
 	private static getDumpToFile(input?: boolean | string): boolean {

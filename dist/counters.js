@@ -108,21 +108,21 @@ class Counters {
         /**
          * the collection of counters for this object corresponding to {@link pid}, and {@link includeParent}
          *
-         * @type {Map<number,ProcessStatistics>}
+         * @type {Map<number,ProcessStatisticsCollection>}
          * @memberof Counters
          */
         this.collection = new Map();
-        /**
+        /**yarn
          * the simple moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
          *
-         * @type {Map<number,ProcessStatistics>}
+         * @type {Map<number,ProcessStatisticsCollection>}
          * @memberof Counters
          */
         this.smaOver4Collection = new Map();
         /**
          * the exponential moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
          *
-         * @type {Map<number,ProcessStatistics>}
+         * @type {Map<number,ProcessStatisticsCollection>}
          * @memberof Counters
          */
         this.emaOver4Collection = new Map();
@@ -132,6 +132,14 @@ class Counters {
         this.processesToTrackTimer = null;
         // timer for collecting the statistics of the  processes that we are tracking.
         this.countersTimer = null;
+        // Promise for updating processesToTrack in case the process at the root of {@link pid} has changed.
+        this.processesToTrackUpdationPromise = null;
+        // Promise for collecting the statistics of the  processes that we are tracking.
+        this.countersCollectionPromise = null;
+        // flag for updating processesToTrack in case the process at the root of {@link pid} has changed.
+        this.processesToTrackUpdationInProgress = false;
+        // flag for collecting the statistics of the  processes that we are tracking.
+        this.countersCollectionInProgress = false;
         const trace = require('debug')(`${logPrefix}:constructor:trace`);
         trace(`parameters: name=${name}`);
         trace(`parameters: collectionInterval=${collectionInterval}`);
@@ -178,8 +186,8 @@ class Counters {
      */
     stop() {
         return __awaiter(this, void 0, void 0, function* () {
-            this.stopPopulatingProcessInfos();
-            this.stopCollecting();
+            yield this.stopPopulatingProcessInfos();
+            yield this.stopCollecting();
             pidusage.clear();
             const promises = [];
             if (this.includeMovingAverages) {
@@ -212,31 +220,41 @@ class Counters {
             let promises = [];
             [Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
                 let file = `${this.getFileNamePrefix(proc)}_chart.png`;
-                promises.push(this.writeChart(file, this.collection[proc.pid]));
+                if (this.collection[proc.pid]) {
+                    // if we have collected data for this process then write Chart for it.
+                    promises.push(this.writeChart(file, this.collection[proc.pid]));
+                }
                 if (this.includeMovingAverages) {
                     file = `${this.getFileNamePrefix(proc)}_sma_chart.png`;
-                    promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
+                    if (this.smaOver4Collection[proc.pid]) {
+                        // if we have simple moving average data computed for this process then  write Chart for it.
+                        promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
+                    }
                     file = `${this.getFileNamePrefix(proc)}_ema_chart.png`;
-                    promises.push(this.writeChart(file, this.emaOver4Collection[proc.pid]));
+                    if (this.emaOver4Collection[proc.pid]) {
+                        // if we have exponential moving average data computed for this process then  write Chart for it.	
+                        promises.push(this.writeChart(file, this.emaOver4Collection[proc.pid]));
+                    }
                 }
             });
             yield Promise.all(promises);
-            throw new Error("Method not implemented.");
         });
     }
-    writeChart(file, processStats) {
+    writeChart(file, processCollection) {
         return __awaiter(this, void 0, void 0, function* () {
+            const trace = require('debug')(`${logPrefix}:writeChart:trace`);
+            trace(`processStats=${utils_1.jsonDump(processCollection)}`);
             const xKey = 'elapsed';
-            const xData = processStats[xKey];
+            const xData = processCollection[xKey];
             const xAxisLabel = `${xKey}(${exports.ProcessStatisticsUnits[xKey]})`;
             const lines = [];
             const title = path.parse(file).name; //get just file name without directory paths and extension
-            Object.keys(processStats)
+            Object.keys(processCollection)
                 .filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp')
                 .forEach(key => {
                 lines.push({
                     label: `${key}(${exports.ProcessStatisticsUnits[key]})`,
-                    data: processStats[key]
+                    data: processCollection[key]
                 });
             });
             yield charts_1.writeChartToFile(xData, lines, 'png', xAxisLabel, file, title);
@@ -273,18 +291,25 @@ class Counters {
         });
     }
     stopPopulatingProcessInfos() {
-        clearInterval(this.processesToTrackTimer);
-        if (this.processesToTrackTimer) {
-            this.processesToTrackTimer.unref();
-            this.processesToTrackTimer = null;
-        }
+        return __awaiter(this, void 0, void 0, function* () {
+            clearInterval(this.processesToTrackTimer);
+            if (this.processesToTrackTimer) {
+                this.processesToTrackTimer.unref();
+                this.processesToTrackTimer = null;
+            }
+            yield this.processesToTrackUpdationPromise;
+        });
     }
     stopCollecting() {
-        clearInterval(this.countersTimer);
-        if (this.countersTimer) {
-            this.countersTimer.unref();
-            this.countersTimer = null;
-        }
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.countersCollectionPromise;
+            clearInterval(this.countersTimer);
+            if (this.countersTimer) {
+                this.countersTimer.unref();
+                this.countersTimer = null;
+            }
+            yield this.countersCollectionPromise;
+        });
     }
     startPopulatingProcessInfos() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -292,8 +317,19 @@ class Counters {
             const getProcessInfos = () => __awaiter(this, void 0, void 0, function* () {
                 this.processesToTrack = yield utils_1.getChildrenTree(this.pid, this.includeParent);
             });
-            yield getProcessInfos();
-            this.processesToTrackTimer = setInterval(getProcessInfos, Counters.ProcessInfoUpdationInterval);
+            // kickoff the collection of processes to track and await 
+            // them to be collected for the first time so that processesToTrack is initialized
+            this.processesToTrackUpdationPromise = getProcessInfos();
+            yield this.processesToTrackUpdationPromise;
+            // set a timer to keep getting processes to track at regular intervals.
+            this.processesToTrackTimer = setInterval(() => {
+                // start updating processesToTrack unless we are already doing one.
+                if (!this.processesToTrackUpdationInProgress) {
+                    this.processesToTrackUpdationInProgress = true;
+                    this.processesToTrackUpdationPromise = getProcessInfos();
+                    this.processesToTrackUpdationInProgress = false;
+                }
+            }, Counters.ProcessInfoUpdationInterval);
         });
     }
     startCollecting() {
@@ -308,20 +344,34 @@ class Counters {
                     elapsed: os.uptime() * 1000,
                     timestamp: Date.now()
                 };
-                [cs, ...yield this.getCounters()].forEach(singleProcessStatistics => {
-                    Object.keys(singleProcessStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
-                        if (!this.collection[singleProcessStatistics.pid]) {
-                            this.collection[singleProcessStatistics.pid] = {
-                                pid: singleProcessStatistics.pid,
-                                ppid: singleProcessStatistics.ppid
+                [cs, ...yield this.getCounters()].forEach(processStatistics => {
+                    const trace = require('debug')(`${logPrefix}:collectCounters:trace`);
+                    Object.keys(processStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
+                        if (!this.collection[processStatistics.pid]) {
+                            this.collection[processStatistics.pid] = {
+                                pid: processStatistics.pid,
+                                ppid: processStatistics.ppid
                             };
                         }
-                        this.collection[singleProcessStatistics.pid][prop] = this.collection[singleProcessStatistics.pid][prop] ? this.collection[singleProcessStatistics.pid][prop].push(...singleProcessStatistics[prop]) : [...singleProcessStatistics[prop]];
+                        if (!this.collection[processStatistics.pid][prop]) {
+                            this.collection[processStatistics.pid][prop] = [];
+                        }
+                        trace(`prop: ${prop}, propColl: ${utils_1.jsonDump(this.collection[processStatistics.pid][prop])}`);
+                        this.collection[processStatistics.pid][prop].push(processStatistics[prop]);
                     });
                 });
             });
-            yield collectCounters();
-            this.countersTimer = setInterval(collectCounters, this.collectionInterval);
+            // Kickoff the first collection
+            this.countersCollectionPromise = collectCounters();
+            // Set a timer for future collection(s)
+            this.countersTimer = setInterval(() => {
+                // start collecting counters unless we are already collecting one set.
+                if (!this.countersCollectionInProgress) {
+                    this.countersCollectionInProgress = true;
+                    this.countersCollectionPromise = collectCounters();
+                    this.countersCollectionInProgress = false;
+                }
+            }, this.collectionInterval);
         });
     }
     computeTotals() {
@@ -329,6 +379,7 @@ class Counters {
             const trace = require('debug')(`${logPrefix}:computeTotals:trace`);
             // Totals are stored in a record corresponding to {@link Counters.TotalsProcessInfo}
             trace(`collection: ${utils_1.jsonDump(this.collection)}`);
+            trace(`collection.keys: ${utils_1.jsonDump(Object.keys(this.collection))}`);
             this.collection[Counters.TotalsProcessInfo.pid] = {
                 cpu: [],
                 memory: [],
@@ -338,20 +389,25 @@ class Counters {
                 elapsed: this.collection[this.pid].elapsed,
                 timestamp: this.collection[this.pid].timestamp,
             };
+            trace(`this.collection: ${utils_1.jsonDump(this.collection)}`);
             // compute and store totals for each timestamp value. 
             for (let i in this.collection[Counters.TotalsProcessInfo.pid].timestamp) {
                 let cpu = 0;
                 let memory = 0;
                 let ctime = 0;
                 this.processesToTrack.forEach(proc => {
-                    cpu += this.collection[proc.pid].cpu[i];
-                    memory += this.collection[proc.pid].memory[i];
-                    ctime += this.collection[proc.pid].ctime[i];
+                    // we have collected anything for this process then add its stats to the totals
+                    if (this.collection[proc.pid]) {
+                        cpu += this.collection[proc.pid].cpu[i];
+                        memory += this.collection[proc.pid].memory[i];
+                        ctime += this.collection[proc.pid].ctime[i];
+                    }
                 });
                 this.collection[Counters.TotalsProcessInfo.pid].cpu[i] = cpu;
                 this.collection[Counters.TotalsProcessInfo.pid].memory[i] = memory;
                 this.collection[Counters.TotalsProcessInfo.pid].ctime[i] = ctime;
             }
+            trace(`this.collection[Counters.TotalsProcessInfo.pid]: ${utils_1.jsonDump(this.collection[Counters.TotalsProcessInfo.pid])}`);
         });
     }
     computePublishStatistics() {

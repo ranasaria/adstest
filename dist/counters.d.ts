@@ -38,7 +38,7 @@ export interface ComputedStatistics {
  * @param elapsed - ms since the start, of the process/test/system depending on context.
  * @param timestamp - ms since epoch.
  */
-export interface ProcessStatistics {
+export interface ProcessStatisticsCollection {
     cpu: number[];
     memory: number[];
     ppid: number;
@@ -47,7 +47,7 @@ export interface ProcessStatistics {
     elapsed: number[];
     timestamp: number[];
 }
-export interface ProcessStatisticsSingle {
+export interface ProcessStatistics {
     cpu: number;
     memory: number;
     ppid: number;
@@ -138,24 +138,24 @@ export declare class Counters {
     /**
      * the collection of counters for this object corresponding to {@link pid}, and {@link includeParent}
      *
-     * @type {Map<number,ProcessStatistics>}
+     * @type {Map<number,ProcessStatisticsCollection>}
      * @memberof Counters
      */
-    collection: Map<number, ProcessStatistics>;
-    /**
+    collection: Map<number, ProcessStatisticsCollection>;
+    /**yarn
      * the simple moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
      *
-     * @type {Map<number,ProcessStatistics>}
+     * @type {Map<number,ProcessStatisticsCollection>}
      * @memberof Counters
      */
-    smaOver4Collection: Map<number, ProcessStatistics>;
+    smaOver4Collection: Map<number, ProcessStatisticsCollection>;
     /**
      * the exponential moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
      *
-     * @type {Map<number,ProcessStatistics>}
+     * @type {Map<number,ProcessStatisticsCollection>}
      * @memberof Counters
      */
-    emaOver4Collection: Map<number, ProcessStatistics>;
+    emaOver4Collection: Map<number, ProcessStatisticsCollection>;
     /**
      * the computed statistics on the collected results. These are consistent with the number we need to submit to performance frameworks for baselining the results.
      *
@@ -201,6 +201,10 @@ export declare class Counters {
     private processesToTrack;
     private processesToTrackTimer;
     private countersTimer;
+    private processesToTrackUpdationPromise;
+    private countersCollectionPromise;
+    private processesToTrackUpdationInProgress;
+    private countersCollectionInProgress;
     private stopPopulatingProcessInfos;
     private stopCollecting;
     private startPopulatingProcessInfos;

@@ -7,6 +7,7 @@
 */
 import { CanvasRenderService, MimeType } from 'chartjs-node-canvas';
 import { ChartConfiguration } from 'chart.js';
+import { jsonDump } from './utils';
 import { Color } from 'color';
 
 const logPrefix = 'adstest:counters:charts';
@@ -76,7 +77,8 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 			datasets: [],
 		}
 	};
-	debug("lines.length:", lines.length);	
+	debug("lines:", jsonDump(lines));
+	debug("empty configuration", jsonDump(configuration));
 	const randomColor = require('randomcolor');
 	const rColors: Color[] = randomColor({
 		luminosity: 'bright', 
@@ -86,6 +88,7 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 	});
 	const colors: Color[] = rColors.map(rc => require('color')(rc));
 	for (const [index, line] of lines.entries()) {
+		debug(`index: ${index}, line: ${jsonDump(line)}`);			
 		let min: number = Math.min(...line.data);
 		let max: number = Math.max(...line.data);
 		let data = line.data;
@@ -111,6 +114,7 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 			data: data, //convert y values to percentages
 		});
 	}
+	debug("filled out configuration", jsonDump(configuration));	
 	const width = 1600; //px
 	const height = 900; //px
 	const canvasRenderService = new CanvasRenderService(width, height, (ChartJS) => {
