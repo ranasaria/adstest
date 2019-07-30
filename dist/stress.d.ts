@@ -74,12 +74,12 @@ export declare class Stress {
     run(originalMethod: Function, originalObject: any, functionName: string, args: any[], { runtime, dop, iterations, passThreshold }?: StressOptions): Promise<StressResult>;
 }
 /**
- * Decorator Factory to return the Method Descriptor function that will stressify any test class method.
-        * Using the descriptor factory allows us pass options to the discriptor itself separately from the arguments
-        * of the function being modified.
+ * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
+* 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+* 	of the function being modified.
  * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  */
-export declare function stressify({ runtime, dop, iterations, passThreshold }?: StressOptions): (memberClass: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;
+export declare function stressify({ runtime, dop, iterations, passThreshold }?: StressOptions): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;

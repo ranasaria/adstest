@@ -26,6 +26,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 */
 const class_validator_1 = require("class-validator");
 const utils_1 = require("./utils");
+const charts_1 = require("./charts");
 const util_1 = require("util");
 const path = require("path");
 const fs = require("fs");
@@ -74,14 +75,19 @@ class CountersError extends Error {
 }
 CountersError.code = 'ERR_COUNTERS';
 exports.CountersError = CountersError;
+exports.ProcessStatisticsUnits = {
+    cpu: '%',
+    memory: 'bytes',
+    ctime: 'ms',
+    elapsed: 'ms',
+    timestamp: 'ms'
+};
 /**
  * The default values for CountersOptions.
  */
 exports.DefaultCountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.cwd()}` };
 /**
- * A class with methods that help to implement the counters-ify decorator.
- * Keeping the core logic of counters-ification in one place as well as allowing this code to use
- * other decorators if needed.
+ * A class with methods that help to implement the counters collection for a test method.
  */
 class Counters {
     /**
@@ -90,7 +96,7 @@ class Counters {
       *
       * @param name - Name of this counter. This is used to identify all generated files.
       * @param pid -  the root pid of processes that we are tracking
-      * @param includeParent - flag to indicate if we should include parent of the pid in the process that we are tracking. Including parent implies we track all of the parent's children and not just the process designameted by {@link pid}
+      * @param includeParent - flag to indicate if we should include parent of the pid in the process that we are tracking. Including parent implies we track all of the parent's children and not just the process designated by {@link pid}
       * @param object of @type {CountersOptions} with:
             * @param collectionInterval - see {@link CountersOptions}.
             * @param includeMovingAverages - see {@link CountersOptions}.
@@ -122,7 +128,7 @@ class Counters {
         this.emaOver4Collection = new Map();
         //processes to track for counters  
         this.processesToTrack = [];
-        // timer for udating processesToTrack in case the process at the root of {@link pid} has changed.
+        // timer for updating processesToTrack in case the process at the root of {@link pid} has changed.
         this.processesToTrackTimer = null;
         // timer for collecting the statistics of the  processes that we are tracking.
         this.countersTimer = null;
@@ -133,7 +139,6 @@ class Counters {
         trace("parameters: dumpToFile:", dumpToFile);
         trace("parameters: dumpToChart:", dumpToChart);
         trace("parameters: outputDirectory:", outputDirectory);
-        trace(`default properties this object at beginning of constructor: this.name=${this.name}, this.pid=${this.pid}, this.includeParent=${this.includeParent}, this.collectionInterval=${this.collectionInterval}, this.includeMovingAverages=${this.includeMovingAverages}, this.dumpToFile=${this.dumpToFile}, this.dumpToChart=${this.dumpToChart}, this.outputDirectory=${this.outputDirectory}`);
         this.name = name;
         this.pid = pid;
         this.includeParent = includeParent;
@@ -156,28 +161,26 @@ class Counters {
      */
     start() {
         return __awaiter(this, void 0, void 0, function* () {
-            //stop collection first in case it is already in progress
+            //stop collection first in case it is already in progress. This is inferred by in progress(defined) timers
             //
-            this.stop();
-            const promises = [];
-            promises.push(this.startPopulatingProcessInfos());
-            promises.push(this.startCollecting());
-            yield Promise.all(promises);
+            if (this.countersTimer || this.processesToTrackTimer) {
+                this.stop();
+            }
+            yield this.startPopulatingProcessInfos();
+            yield this.startCollecting();
         });
     }
     /**
      * This method stops the data collection.
      * If {@link includeMovingAverages} was set then it populates the moving average data.
      * If {@link dumpToFile} was set then it dumps the collected data to files.
-     * If {@link dumpToChart} was set then it dumps out charts correspoinding to the data collected.
+     * If {@link dumpToChart} was set then it dumps out charts corresponding to the data collected.
      */
     stop() {
         return __awaiter(this, void 0, void 0, function* () {
             this.stopPopulatingProcessInfos();
             this.stopCollecting();
             pidusage.clear();
-            this.processesToTrackTimer = null;
-            this.countersTimer = null;
             const promises = [];
             if (this.includeMovingAverages) {
                 yield this.computeMovingAverages();
@@ -206,13 +209,43 @@ class Counters {
     }
     writeCharts() {
         return __awaiter(this, void 0, void 0, function* () {
+            let promises = [];
+            [Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
+                let file = `${this.getFileNamePrefix(proc)}_chart.png`;
+                promises.push(this.writeChart(file, this.collection[proc.pid]));
+                if (this.includeMovingAverages) {
+                    file = `${this.getFileNamePrefix(proc)}_sma_chart.png`;
+                    promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
+                    file = `${this.getFileNamePrefix(proc)}_ema_chart.png`;
+                    promises.push(this.writeChart(file, this.emaOver4Collection[proc.pid]));
+                }
+            });
+            yield Promise.all(promises);
             throw new Error("Method not implemented.");
+        });
+    }
+    writeChart(file, processStats) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const xKey = 'elapsed';
+            const xData = processStats[xKey];
+            const xAxisLabel = `${xKey}(${exports.ProcessStatisticsUnits[xKey]})`;
+            const lines = [];
+            const title = path.parse(file).name; //get just file name without directory paths and extension
+            Object.keys(processStats)
+                .filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp')
+                .forEach(key => {
+                lines.push({
+                    label: `${key}(${exports.ProcessStatisticsUnits[key]})`,
+                    data: processStats[key]
+                });
+            });
+            yield charts_1.writeChartToFile(xData, lines, 'png', xAxisLabel, file, title);
         });
     }
     writeCollectionData() {
         return __awaiter(this, void 0, void 0, function* () {
             let promises = [];
-            this.processesToTrack.forEach((proc) => {
+            [Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
                 let file = `${this.getFileNamePrefix(proc)}_data.json`;
                 promises.push(writeFileAsync(file, utils_1.jsonDump(this.collection[proc.pid])));
                 if (this.includeMovingAverages) {
@@ -226,84 +259,98 @@ class Counters {
         });
     }
     getFileNamePrefix(proc) {
-        return path.join(this.outputDirectory, `${proc.name}_${proc.pid}`.replace('.', '_'));
+        return path.join(this.outputDirectory, `${this.name}_${proc.name}_${proc.pid}`.replace('.', '_'));
     }
     /**
      * This method resets this object. It stops any ongoing collection as well as clears any collected data.
      */
     reset() {
-        this.stop();
-        this.collection.clear();
-        this.smaOver4Collection.clear();
-        this.emaOver4Collection.clear();
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.stop();
+            this.collection.clear();
+            this.smaOver4Collection.clear();
+            this.emaOver4Collection.clear();
+        });
     }
     stopPopulatingProcessInfos() {
         clearInterval(this.processesToTrackTimer);
-        this.processesToTrackTimer.unref();
+        if (this.processesToTrackTimer) {
+            this.processesToTrackTimer.unref();
+            this.processesToTrackTimer = null;
+        }
     }
     stopCollecting() {
         clearInterval(this.countersTimer);
-        this.processesToTrackTimer.unref();
+        if (this.countersTimer) {
+            this.countersTimer.unref();
+            this.countersTimer = null;
+        }
     }
     startPopulatingProcessInfos() {
         return __awaiter(this, void 0, void 0, function* () {
             assert(this.processesToTrackTimer === null, `the processesToTrackTimer should be null when we startPopulatingProcessInfos`);
-            this.processesToTrackTimer = setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            const getProcessInfos = () => __awaiter(this, void 0, void 0, function* () {
                 this.processesToTrack = yield utils_1.getChildrenTree(this.pid, this.includeParent);
-            }), Counters.ProcessInfoUpdationInterval);
+            });
+            yield getProcessInfos();
+            this.processesToTrackTimer = setInterval(getProcessInfos, Counters.ProcessInfoUpdationInterval);
         });
     }
     startCollecting() {
         return __awaiter(this, void 0, void 0, function* () {
             assert(this.countersTimer === null, `the countersTimer should be null when we startCollecting`);
-            this.countersTimer = setInterval(() => __awaiter(this, void 0, void 0, function* () {
+            const collectCounters = () => __awaiter(this, void 0, void 0, function* () {
                 const cs = {
                     cpu: (osu.cpu.average()).avgTotal,
-                    memory: [os.totalmem() - os.freemem()],
+                    memory: os.totalmem() - os.freemem(),
                     ppid: undefined,
                     pid: 0,
-                    elapsed: [os.uptime() * 1000],
-                    timestamp: [Date.now()]
+                    elapsed: os.uptime() * 1000,
+                    timestamp: Date.now()
                 };
-                [cs, ...yield this.getCounters()].forEach(counterStats => {
-                    Object.keys(counterStats).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
-                        if (!this.collection[counterStats.pid]) {
-                            this.collection[counterStats.pid] = {
-                                pid: counterStats.pid,
-                                ppid: counterStats.ppid
+                [cs, ...yield this.getCounters()].forEach(singleProcessStatistics => {
+                    Object.keys(singleProcessStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
+                        if (!this.collection[singleProcessStatistics.pid]) {
+                            this.collection[singleProcessStatistics.pid] = {
+                                pid: singleProcessStatistics.pid,
+                                ppid: singleProcessStatistics.ppid
                             };
                         }
-                        assert(counterStats[prop].length === 1);
-                        this.collection[counterStats.pid][prop] = this.collection[counterStats.pid][prop] ? this.collection[counterStats.pid][prop].push(...counterStats[prop]) : counterStats[prop];
+                        this.collection[singleProcessStatistics.pid][prop] = this.collection[singleProcessStatistics.pid][prop] ? this.collection[singleProcessStatistics.pid][prop].push(...singleProcessStatistics[prop]) : [...singleProcessStatistics[prop]];
                     });
                 });
-            }), this.collectionInterval);
+            });
+            yield collectCounters();
+            this.countersTimer = setInterval(collectCounters, this.collectionInterval);
         });
     }
     computeTotals() {
         return __awaiter(this, void 0, void 0, function* () {
-            // Totals are stored in a record with pid and ppid of -1.
-            this.collection[-1] = {
+            const trace = require('debug')(`${logPrefix}:computeTotals:trace`);
+            // Totals are stored in a record corresponding to {@link Counters.TotalsProcessInfo}
+            trace(`collection: ${utils_1.jsonDump(this.collection)}`);
+            this.collection[Counters.TotalsProcessInfo.pid] = {
                 cpu: [],
                 memory: [],
-                ppid: -1,
-                pid: -1,
+                ppid: Counters.TotalsProcessInfo.ppid,
+                pid: Counters.TotalsProcessInfo.pid,
                 ctime: [],
                 elapsed: this.collection[this.pid].elapsed,
                 timestamp: this.collection[this.pid].timestamp,
             };
-            for (let i in this.collection[this.pid].timestamp) {
+            // compute and store totals for each timestamp value. 
+            for (let i in this.collection[Counters.TotalsProcessInfo.pid].timestamp) {
                 let cpu = 0;
                 let memory = 0;
                 let ctime = 0;
-                this.processesToTrack.filter(proc => proc.pid > 0).forEach(proc => {
+                this.processesToTrack.forEach(proc => {
                     cpu += this.collection[proc.pid].cpu[i];
                     memory += this.collection[proc.pid].memory[i];
                     ctime += this.collection[proc.pid].ctime[i];
                 });
-                this.collection[this.pid].cpu[i] = cpu;
-                this.collection[this.pid].memory[i] = memory;
-                this.collection[this.pid].ctime[i] = ctime;
+                this.collection[Counters.TotalsProcessInfo.pid].cpu[i] = cpu;
+                this.collection[Counters.TotalsProcessInfo.pid].memory[i] = memory;
+                this.collection[Counters.TotalsProcessInfo.pid].ctime[i] = ctime;
             }
         });
     }
@@ -357,7 +404,8 @@ class Counters {
     }
     getCounters() {
         return __awaiter(this, void 0, void 0, function* () {
-            return [...yield pidusage(this.processesToTrack.map(p => p.pid))];
+            const processStatistics = yield pidusage([...this.processesToTrack.map(p => p.pid)]);
+            return [...Object.values(processStatistics)];
         });
     }
     static getDumpToFile(input) {
@@ -381,9 +429,35 @@ class Counters {
         }
         return exports.DefaultCountersOptions.outputDirectory;
     }
+    /**
+     *
+     *
+     * @static
+     * @param {()=> void} closureForCollection - the body of code while executing which the performance counters are collected.
+     * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
+     * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process.
+     * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
+     * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+     * @returns {Promise<void>} - returns a promise.
+     * @memberof Counters
+     */
+    static CollectPerfCounters(closureForCollection, name, pid = process.pid, includeParent = true, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const countersCollector = new Counters(name, pid, includeParent, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+            yield countersCollector.start();
+            yield closureForCollection();
+            yield countersCollector.stop();
+        });
+    }
 }
 Counters.MaxCollectionInterval = 3600 * 1000; // in ms. MaxValue is 1 hour.
 Counters.ProcessInfoUpdationInterval = 10 * 1000; // 10 milliseconds. It takes 2-4 seconds to gather process information typically, so this value should not be lower than 5 seconds.
+// We designate a pid and ppid of -1 for an artificial ProcessInfo object for keeping track of totals
+Counters.TotalsProcessInfo = {
+    pid: -1,
+    ppid: -1,
+    name: 'totals'
+};
 __decorate([
     class_validator_1.IsDefined(),
     class_validator_1.IsInt(),
@@ -394,15 +468,14 @@ __decorate([
     class_validator_1.IsDefined(),
     class_validator_1.IsInt(),
     class_validator_1.Min(0),
-    __metadata("design:type", Boolean)
-], Counters.prototype, "includeParent", void 0);
-__decorate([
-    class_validator_1.IsDefined(),
-    class_validator_1.IsInt(),
-    class_validator_1.Min(0),
     class_validator_1.Max(Counters.MaxCollectionInterval),
     __metadata("design:type", Number)
 ], Counters.prototype, "collectionInterval", void 0);
+__decorate([
+    class_validator_1.IsNotEmpty(),
+    class_validator_1.IsBoolean(),
+    __metadata("design:type", Boolean)
+], Counters.prototype, "includeParent", void 0);
 __decorate([
     class_validator_1.IsNotEmpty(),
     class_validator_1.IsBoolean(),
@@ -421,7 +494,7 @@ __decorate([
 __decorate([
     class_validator_1.IsString(),
     class_validator_1.IsNotEmpty(),
-    class_validator_1.IsAlphanumeric(),
+    class_validator_1.Matches(/[a-z0-9_]/i, 'i'),
     __metadata("design:type", String)
 ], Counters.prototype, "name", void 0);
 __decorate([
@@ -430,4 +503,49 @@ __decorate([
     __metadata("design:type", String)
 ], Counters.prototype, "outputDirectory", void 0);
 exports.Counters = Counters;
+/**
+ * Decorator Factory to return a decorator function that will collect performance counters for any object instance's 'async' method.
+ * 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+ * 	of the function being modified.
+ *
+ * @export
+ * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
+ * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process.
+ * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
+ * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+ * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor} - returns the decorator method that is modified version of the method being decorated.
+ */
+function collectPerfCounters(name, pid = process.pid, includeParent = true, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
+    const debug = require('debug')(`${logPrefix}:collectPerfCounters`);
+    // return the function that does the job of collecting the perf counters on an object instance method with decorator @collectPerfCounters
+    //
+    debug(`collectPerfCounters FactoryDecorator called with name=${name}, pid=${pid}, includeParent=${includeParent}, collectionInterval=${collectionInterval}, includeMovingAverages=${includeMovingAverages}, dumpToFile, dumpToChart, outputDirectory `);
+    // The actual decorator function that modifies the original target method pointed to by the memberDescriptor
+    //
+    return function (target, memberName, memberDescriptor) {
+        // Collect Performance Counters for the 'memberName' function on the 'target' object pointed to by the memberDescriptor.value only if SuiteType is stress
+        //
+        debug(`Collecting Performance Counters for the method:"${memberName}" of class:${utils_1.jsonDump(target.constructor.name)}`);
+        // save a reference to the original method, this way we keep the values currently in the descriptor and not overwrite what another
+        // decorator might have done to this descriptor by return the original descriptor.
+        //
+        const originalMethod = memberDescriptor.value;
+        //modifying the descriptor's value parameter to point to a new method which is the collects the performance counters while executing the originalMethod
+        //
+        memberDescriptor.value = function (...args) {
+            return __awaiter(this, void 0, void 0, function* () {
+                // note usage of originalMethod here
+                //
+                yield Counters.CollectPerfCounters(() => __awaiter(this, void 0, void 0, function* () {
+                    yield originalMethod.apply(this, args);
+                }), name, pid, includeParent, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+            });
+        };
+        // return the original descriptor unedited.
+        // the method pointed to by this descriptor was modified to a performance collecting version of the originalMethod.
+        //
+        return memberDescriptor;
+    };
+}
+exports.collectPerfCounters = collectPerfCounters;
 //# sourceMappingURL=counters.js.map

@@ -21,10 +21,11 @@
                 "tdd",
                 "**/test/*.test.ts",
                 "-g",
-                "Chart"
+                "multiple threads"
             ],
             "env": {
-                "TS_NODE_PROJECT": "src/tsconfig.json"
+                "TS_NODE_PROJECT": "src/tsconfig.json",
+                "CountersCollectionInterval": "10"
             },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",

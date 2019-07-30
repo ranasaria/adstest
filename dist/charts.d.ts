@@ -19,4 +19,4 @@ export interface LineData {
  * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-export declare function writeChartToFile(xData: any[], lines: LineData[], fileType: string, file: string): Promise<Buffer>;
+export declare function writeChartToFile(xData: any[], lines: LineData[], fileType?: string, xAxisLabel?: string, file?: string, title?: string): Promise<Buffer>;

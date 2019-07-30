@@ -28,35 +28,94 @@ const debug = require('debug')(logPrefix);
  * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-function writeChartToFile(xData, lines, fileType = 'png', file) {
+function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(ms)', file = null, title = null) {
     return __awaiter(this, void 0, void 0, function* () {
-        //	let stream: { pipe: (arg0: any) => void; };
         const configuration = {
             // See https://www.chartjs.org/docs/latest/configuration        
             type: 'line',
+            options: {
+                title: {
+                    display: !!(title),
+                    fontColor: 'Red',
+                    fontStyle: 'Bold',
+                    fontSize: 50,
+                    position: 'bottom',
+                    text: title
+                },
+                scales: {
+                    xAxes: [{
+                            gridLines: {
+                                lineWidth: 10
+                            },
+                            display: true,
+                            scaleLabel: {
+                                display: true,
+                                labelString: xAxisLabel
+                            },
+                        }],
+                    yAxes: [{
+                            ticks: {
+                                // Include a % sign in the ticks on y-axis
+                                callback: function (value, index, values) {
+                                    return value + '%';
+                                }
+                            },
+                            gridLines: {
+                                lineWidth: 10
+                            },
+                            max: 130
+                        }]
+                },
+            },
             data: {
                 labels: xData,
                 datasets: [],
             }
         };
+        debug("lines.length:", lines.length);
         const randomColor = require('randomcolor');
-        lines.forEach((line) => {
-            const color = require('color')(randomColor({ luminosity: 'bright' }));
-            configuration.data.datasets.push({
-                //fillColor: `${color.alpha(0.5)}`,
-                fill: false,
-                pointColor: `${color.alpha(1).darken(0.5)}`,
-                strokeColor: `${color.alpha(1).lighten(0.1)}`,
-                label: line.label,
-                data: line.data,
-            });
+        const rColors = randomColor({
+            luminosity: 'bright',
+            format: 'rgb',
+            count: lines.length,
+            seed: 5
         });
+        const colors = rColors.map(rc => require('color')(rc));
+        for (const [index, line] of lines.entries()) {
+            let min = Math.min(...line.data);
+            let max = Math.max(...line.data);
+            let data = line.data;
+            let label = line.label;
+            if (min == max) {
+                // please it a random location between 0 and 100, but we move it same amount up and down so find a random number between 0 and 50 to adjust min and max by that amount
+                const randomShift = Math.ceil(Math.random() * 50);
+                label = `${line.label}:${randomShift.toPrecision(3)}%=${min} & zero at:0`;
+                data = line.data.map(y => randomShift);
+            }
+            else {
+                label = `${line.label}:1%=${((max - min) / 100).toPrecision(3)} & zero at:${min.toPrecision(3)}`;
+                data = line.data.map(y => (y - min) * 100 / (max - min));
+            }
+            const color = colors[index];
+            configuration.data.datasets.push({
+                fill: false,
+                borderColor: `${color}`,
+                backgroundColor: `${color.alpha(0.7)}`,
+                borderWidth: 4,
+                pointRadius: 6,
+                pointBackgroundColor: '#fff',
+                label: label,
+                data: data,
+            });
+        }
         const width = 1600; //px
         const height = 900; //px
         const canvasRenderService = new chartjs_node_canvas_1.CanvasRenderService(width, height, (ChartJS) => {
             ChartJS.defaults.global.elements.line.fill = true;
             ChartJS.defaults.line.spanGaps = true;
-            ChartJS.defaults.global.defaultColor = 'rgba(255,255,0,0.1)';
+            ChartJS.defaults.global.defaultFontColor = 'black';
+            ChartJS.defaults.global.defaultFontStyle = 'bold';
+            ChartJS.defaults.global.defaultFontSize = 16;
         });
         const mimeType = getMimeType(fileType);
         const image = yield canvasRenderService.renderToBuffer(configuration, mimeType);

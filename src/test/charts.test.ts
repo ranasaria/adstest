@@ -53,10 +53,11 @@ suite('Charts automation unit tests', function () {
 	//
 	test(`Positive Test:${testId++}:: ensures chart to file works for canonical case`, async function () {
 		const fileType = 'png';
-		const file = `${uniqueFilename(os.tmpdir(), 'charts_test_ts')}.${fileType}`;  
+		const chartName = 'charts_test_ts';
+		const file = `${uniqueFilename(os.tmpdir(), chartName)}.${fileType}`;  
 		trace("chart file to generate:", file);		
 		debug(`invoking writeChartToFile(${jsonDump(xData)}, ${jsonDump(lines)}, ${fileType}, ${file})`);
-		const image: Buffer = await writeChartToFile(xData, lines, fileType, file);
+		const image: Buffer = await writeChartToFile(xData, lines, fileType, undefined, file, chartName);
 		trace(`test writeChartToFile done`);
 		const stats = fs.statSync(file);
 		trace(`chart file:${file} generated with size:${stats.size}`);

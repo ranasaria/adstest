@@ -27,10 +27,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const class_validator_1 = require("class-validator");
 const assert_1 = require("assert");
 const utils_1 = require("./utils");
+const counters_1 = require("./counters");
 const assert = require("assert");
 const util_1 = require("util");
 const logPrefix = 'adstest:stress';
-const debug = require('debug')(logPrefix);
 const trace = require('debug')(`${logPrefix}:trace`);
 /**
  * Subclass of Error to wrap any Error objects caught during Stress Execution.
@@ -88,6 +88,7 @@ class Stress {
      * @param passThreshold - see {@link StressOptions}.
      */
     constructor({ runtime, dop, iterations, passThreshold } = {}) {
+        const debug = require('debug')(`${logPrefix}:constructor`);
         const trace = require('debug')(`${logPrefix}:constructor:trace`);
         trace(`parameters: runtime=${runtime}, dop=${dop}, iterations=${iterations}, passThreshold=${passThreshold}`);
         trace(`default properties this object at beginning of constructor: this.runtime=${this.runtime}, this.dop=${this.dop}, this.iterations=${this.iterations}, this.passThreshold=${this.passThreshold}`);
@@ -99,7 +100,7 @@ class Stress {
         //
         let validationErrors = class_validator_1.validateSync(this);
         if (validationErrors.length > 0) {
-            trace(`throwing validationErrors::${utils_1.jsonDump(validationErrors)}`);
+            debug(`throwing validationErrors::${utils_1.jsonDump(validationErrors)}`);
             throw validationErrors;
         }
         trace(`properties of this object post full construction with given parameters are: this.runtime=${this.runtime}, this.dop=${this.dop}, this.iterations=${this.iterations}, this.passThreshold=${this.passThreshold}`);
@@ -230,27 +231,28 @@ exports.Stress = Stress;
 //
 const stresser = new Stress();
 /**
- * Decorator Factory to return the Method Descriptor function that will stressify any test class method.
-        * Using the descriptor factory allows us pass options to the discriptor itself separately from the arguments
-        * of the function being modified.
+ * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
+* 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+* 	of the function being modified.
  * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  */
 function stressify({ runtime, dop, iterations, passThreshold } = {}) {
+    const debug = require('debug')(`${logPrefix}:stressify`);
     // return the function that does the job of stressifying a test class method with decorator @stressify
     //
     debug(`stressify FactoryDecorator called with runtime=${runtime}, dop=${dop}, iter=${iterations}, passThreshold=${passThreshold}`);
-    // The actual decorator function that modifies the original target method pointed to by the memberDiscriptor
+    // The actual decorator function that modifies the original target method pointed to by the memberDescriptor
     //
-    return function (memberClass, memberName, memberDescriptor) {
-        // stressify the target function pointed to by the descriptor.value only if SuiteType is stress
+    return function (target, memberName, memberDescriptor) {
+        // stressify the 'memberName' function on the 'target' object pointed to by the memberDescriptor.value only if SuiteType is stress
         //
         const suiteType = utils_1.getSuiteType();
         debug(`Stressified Decorator called for: ${memberName} and suiteType=${suiteType}`);
         if (suiteType === utils_1.SuiteType.Stress) {
-            debug(`Stressifying ${memberName} since env variable SuiteType is set to ${utils_1.SuiteType.Stress}`);
+            debug(`Stressifying method:"${memberName}" of class:${utils_1.jsonDump(target.constructor.name)} since env variable SuiteType is set to ${utils_1.SuiteType.Stress}`);
             // save a reference to the original method, this way we keep the values currently in the descriptor and not overwrite what another
             // decorator might have done to this descriptor by return the original descriptor.
             //
@@ -261,14 +263,17 @@ function stressify({ runtime, dop, iterations, passThreshold } = {}) {
                 return __awaiter(this, void 0, void 0, function* () {
                     // note usage of originalMethod here
                     //
-                    const result = yield stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+                    let result;
+                    yield counters_1.Counters.CollectPerfCounters(() => __awaiter(this, void 0, void 0, function* () {
+                        result = yield stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+                    }), `${target.constructor.name}_${memberName}`);
                     debug(`Stressified: ${memberName}(${args.join(',')}) returned: ${utils_1.jsonDump(result)}`);
                     return result;
                 });
             };
         }
-        // return the original discriptor unedited so that the method pointed to it remains the same as before
-        // the method pointed to by this descriptor was modifed to a stressified version of the origMethod if SuiteType was Stress.
+        // return the original descriptor unedited.
+        // the method pointed to by this descriptor was modified to a stressified version of the originalMethod if SuiteType was Stress.
         //
         return memberDescriptor;
     };
