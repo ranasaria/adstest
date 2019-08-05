@@ -49,7 +49,6 @@
     "mocha-multi-reporters": "^1.1.7",
     "ps-list": "^6.3.0",
     "ps-node": "^0.1.6",
-    "temp": "^0.9.0",
     "tmp": "^0.1.0"
   },
   "scripts": {
