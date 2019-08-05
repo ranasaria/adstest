@@ -116,12 +116,33 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], StressifyTester.prototype, "passThresholdMet", null);
 __decorate([
-    stress_1.stressify({ runtime: StressifyTester.runtime, dop: StressifyTester.dop, iterations: stress_1.Stress.MaxIterations, passThreshold: 1 }),
+    stress_1.stressify({ runtime: StressifyTester.runtime, dop: StressifyTester.dop, iterations: stress_1.Stress.MaxIterations, passThreshold: 1 }, false /* collectCounters */),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], StressifyTester.prototype, "timeOutTest", null);
+before('Stress automation setup', function () {
+    if (process.env.DontCleanupTestGeneratedFiles) {
+        debug(`process.env.DontCleanupTestGeneratedFiles: set to ${process.env.DontCleanupTestGeneratedFiles}, skipping temporary files for cleanup`);
+        temp.track(false);
+    }
+    else {
+        debug(`marking temporary files for cleanup`);
+        // Automatically track and cleanup files at exit
+        temp.track();
+    }
+    process.env.CountersOutputDirectory = temp.mkdirSync('StressUnitTests_');
+    debug('temp output directory', process.env.CountersOutputDirectory);
+});
+beforeEach('Stress automation beforeEach Test Setup', function () {
+    process.env.CountersCollectionInterval = '10'; // collect every 10 milliseconds
+});
+afterEach('Stress automation afterEach Test Cleanup', function () {
+    delete process.env.CountersCollectionInterval; // collect every 10 milliseconds
+});
 suite('Stress automation unit tests', function () {
+    // set a higher timeout value
+    this.timeout(10000); // allow 10 seconds for each test to complete
     //Environment Variable Tests
     //
     const absentValues = ['deleted', undefined, null, ''];
@@ -356,16 +377,16 @@ suite('Stress automation unit tests', function () {
     test(`Positive Test:${testId++}:: verifies that timer fires to end the test when runTime expires and number of iterations are not up.`, function () {
         return __awaiter(this, void 0, void 0, function* () {
             debug('invoking timerTest()');
-            let timeOut = StressifyTester.runtime; //seconds
+            let timeOut = StressifyTester.runtime + 60000; //60 additional seconds beyond expiry of runtime.
             let timeOutExceeded = false;
             let testDone = false;
-            // setup a timer to flag timeOutExceeded when we have waited for 1.3*timeOut amount of time.
-            // This test also assert that the test is done when this timeout expires.
+            // setup a timer to flag timeOutExceeded when we have waited for timeOut amount of time.
+            // This test also asserts that the test is done when this timeout expires.
             //
             let timer = setTimeout(() => {
                 timeOutExceeded = true;
-                assert(testDone, `test was not done even after ${1.4 * timeOut} seconds when runtime configured was ${timeOut} seconds`);
-            }, timeOut * 1.4 * 1000);
+                assert(testDone, `test was not done even after ${timeOut} seconds when runtime configured was ${StressifyTester.runtime} seconds`);
+            }, timeOut);
             const stressifier = new StressifyTester();
             let retVal = yield stressifier.timeOutTest();
             testDone = true;
@@ -373,7 +394,7 @@ suite('Stress automation unit tests', function () {
             timer.unref();
             debug(`test timeOutTest done, total invocations=${stressifier.t}`);
             debug(`test retVal is ${utils_1.jsonDump(retVal)}`);
-            assert(!timeOutExceeded, `timeOut of 1.4 times ${timeOut} seconds has been exceeded while executing the test`);
+            assert(!timeOutExceeded, `timeOut of ${timeOut} seconds has been exceeded while executing the test and configured runtime  was: ${StressifyTester.runtime}`);
             assert(retVal.numPasses <= stress_1.Stress.MaxIterations, `total invocations should less than ${stress_1.Stress.MaxIterations}`);
         });
     });

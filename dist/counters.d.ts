@@ -1,14 +1,6 @@
 import { CountersOptions } from './counters';
 import { ProcessInfo } from './utils';
 /**
- * Subclass of Error to wrap any Error objects caught during Counters Execution.
- */
-export declare class CountersError extends Error {
-    inner: Error | any;
-    static code: string;
-    constructor(error?: any);
-}
-/**
  * A data structure to hold all the computed statistics for a test runs.
  * These are the various computed metrics for the test that we spit out.
  * @export
@@ -210,7 +202,7 @@ export declare class Counters {
     private startPopulatingProcessInfos;
     private startCollecting;
     private computeTotals;
-    private computePublishStatistics;
+    private computeAndWriteStatistics;
     private computeMovingAverages;
     private getCounters;
     private static getDumpToFile;

@@ -81,7 +81,7 @@ export interface StressResult {
 
 /**
  * A class with methods that help to implement the stressify decorator.
- * Keeping the core logic of stressification in one place as well as allowing this code to use
+ * Keeping the core logic of `stressification` in one place as well as allowing this code to use
  * other decorators if needed.
  */
 export class Stress {
@@ -110,12 +110,13 @@ export class Stress {
 	@Max(Stress.MaxDop)
 	readonly dop?: number;
 
-	// Threshold for fractional number of individual test passes fo total executed to declare the stress test passed. This is a fraction between 0 and Stress.MaxPassThreshold.
+	// Threshold for fractional number of individual test passes to total executed to declare the stress test passed. This is a fraction between 0 and Stress.MaxPassThreshold.
 	@IsDefined()
 	@Min(0)
 	@Max(Stress.MaxPassThreshold)
 	readonly passThreshold?: number;
 
+	
 	/**
 	 * Constructor allows for construction with a bunch of optional parameters
 	 *
@@ -269,7 +270,7 @@ const stresser = new Stress();
  * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  */
-export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}, collectCounters: boolean = true): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
 	const debug = require('debug')(`${logPrefix}:stressify`);
 	// return the function that does the job of stressifying a test class method with decorator @stressify
 	//
@@ -288,17 +289,22 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 			// decorator might have done to this descriptor by return the original descriptor.
 			//
 			const originalMethod: Function = memberDescriptor.value;
-			//modifying the descriptor's value parameter to point to a new method which is the stressified version of the originalMethod
+			//modifying the descriptor's value parameter to point to a new method which is the `stressified` version of the originalMethod
 			//
 			memberDescriptor.value = async function (...args: any[]): Promise<StressResult> {
 				// note usage of originalMethod here
 				//
 				let result: StressResult;
-				await Counters.CollectPerfCounters(async () => {
+				if (collectCounters) {
+					await Counters.CollectPerfCounters(async () => {
 						result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
-					}, 
-					`${target.constructor.name}_${memberName}`
-				);
+						}, 
+						`${target.constructor.name}_${memberName}`
+					);
+				} else {
+					result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+				}
+
 				debug(`Stressified: ${memberName}(${args.join(',')}) returned: ${jsonDump(result)}`);
 				return result;
 			};

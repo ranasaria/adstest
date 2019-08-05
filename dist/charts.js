@@ -16,6 +16,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * This module contains all the definitions for drawing charts and writing them to a file.
 */
 const chartjs_node_canvas_1 = require("chartjs-node-canvas");
+const utils_1 = require("./utils");
 const logPrefix = 'adstest:counters:charts';
 const debug = require('debug')(logPrefix);
 /**
@@ -72,7 +73,8 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
                 datasets: [],
             }
         };
-        debug("lines.length:", lines.length);
+        debug("lines:", utils_1.jsonDump(lines));
+        debug("empty configuration", utils_1.jsonDump(configuration));
         const randomColor = require('randomcolor');
         const rColors = randomColor({
             luminosity: 'bright',
@@ -82,6 +84,7 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
         });
         const colors = rColors.map(rc => require('color')(rc));
         for (const [index, line] of lines.entries()) {
+            debug(`index: ${index}, line: ${utils_1.jsonDump(line)}`);
             let min = Math.min(...line.data);
             let max = Math.max(...line.data);
             let data = line.data;
@@ -108,6 +111,7 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
                 data: data,
             });
         }
+        debug("filled out configuration", utils_1.jsonDump(configuration));
         const width = 1600; //px
         const height = 900; //px
         const canvasRenderService = new chartjs_node_canvas_1.CanvasRenderService(width, height, (ChartJS) => {

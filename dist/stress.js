@@ -75,7 +75,7 @@ exports.StressError = StressError;
 exports.DefaultStressOptions = { runtime: 7200, dop: 4, iterations: 50, passThreshold: 0.95 };
 /**
  * A class with methods that help to implement the stressify decorator.
- * Keeping the core logic of stressification in one place as well as allowing this code to use
+ * Keeping the core logic of `stressification` in one place as well as allowing this code to use
  * other decorators if needed.
  */
 class Stress {
@@ -239,7 +239,7 @@ const stresser = new Stress();
  * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  */
-function stressify({ runtime, dop, iterations, passThreshold } = {}) {
+function stressify({ runtime, dop, iterations, passThreshold } = {}, collectCounters = true) {
     const debug = require('debug')(`${logPrefix}:stressify`);
     // return the function that does the job of stressifying a test class method with decorator @stressify
     //
@@ -257,16 +257,21 @@ function stressify({ runtime, dop, iterations, passThreshold } = {}) {
             // decorator might have done to this descriptor by return the original descriptor.
             //
             const originalMethod = memberDescriptor.value;
-            //modifying the descriptor's value parameter to point to a new method which is the stressified version of the originalMethod
+            //modifying the descriptor's value parameter to point to a new method which is the `stressified` version of the originalMethod
             //
             memberDescriptor.value = function (...args) {
                 return __awaiter(this, void 0, void 0, function* () {
                     // note usage of originalMethod here
                     //
                     let result;
-                    yield counters_1.Counters.CollectPerfCounters(() => __awaiter(this, void 0, void 0, function* () {
+                    if (collectCounters) {
+                        yield counters_1.Counters.CollectPerfCounters(() => __awaiter(this, void 0, void 0, function* () {
+                            result = yield stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+                        }), `${target.constructor.name}_${memberName}`);
+                    }
+                    else {
                         result = yield stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
-                    }), `${target.constructor.name}_${memberName}`);
+                    }
                     debug(`Stressified: ${memberName}(${args.join(',')}) returned: ${utils_1.jsonDump(result)}`);
                     return result;
                 });

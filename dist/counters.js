@@ -38,43 +38,6 @@ const moving_averages_1 = require("moving-averages");
 const simple_statistics_1 = require("simple-statistics");
 const writeFileAsync = util_1.promisify(fs.writeFile);
 const logPrefix = 'adstest:counters';
-/**
- * Subclass of Error to wrap any Error objects caught during Counters Execution.
- */
-class CountersError extends Error {
-    constructor(error) {
-        super();
-        this.name = CountersError.code;
-        this.inner = error;
-        if (error instanceof Error) {
-            this.message = error.message;
-            this.stack = error.stack;
-        }
-        else if (error instanceof String) {
-            this.message = error.valueOf();
-            try {
-                throw new Error();
-            }
-            catch (e) {
-                this.stack = e.stack;
-            }
-        }
-        else if (util_1.isString(error)) {
-            this.message = error;
-            try {
-                throw new Error();
-            }
-            catch (e) {
-                this.stack = e.stack;
-            }
-        }
-        else {
-            this.message = 'unknown counters error';
-        }
-    }
-}
-CountersError.code = 'ERR_COUNTERS';
-exports.CountersError = CountersError;
 exports.ProcessStatisticsUnits = {
     cpu: '%',
     memory: 'bytes',
@@ -85,7 +48,7 @@ exports.ProcessStatisticsUnits = {
 /**
  * The default values for CountersOptions.
  */
-exports.DefaultCountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.cwd()}` };
+exports.DefaultCountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.env.TEMP}` };
 /**
  * A class with methods that help to implement the counters collection for a test method.
  */
@@ -194,7 +157,7 @@ class Counters {
                 yield this.computeMovingAverages();
             }
             yield this.computeTotals();
-            yield this.computePublishStatistics();
+            promises.push(this.computeAndWriteStatistics());
             if (this.dumpToFile) {
                 promises.push(this.writeCollectionData());
                 promises.push(this.writeProcessesInfos());
@@ -217,26 +180,31 @@ class Counters {
     }
     writeCharts() {
         return __awaiter(this, void 0, void 0, function* () {
+            const trace = require('debug')(`${logPrefix}:writeCharts:trace`);
             let promises = [];
             [Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
                 let file = `${this.getFileNamePrefix(proc)}_chart.png`;
+                trace(`chart file name: ${file}`);
                 if (this.collection[proc.pid]) {
                     // if we have collected data for this process then write Chart for it.
                     promises.push(this.writeChart(file, this.collection[proc.pid]));
                 }
                 if (this.includeMovingAverages) {
                     file = `${this.getFileNamePrefix(proc)}_sma_chart.png`;
+                    trace(`sma chart file name: ${file}`);
                     if (this.smaOver4Collection[proc.pid]) {
                         // if we have simple moving average data computed for this process then  write Chart for it.
                         promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
                     }
                     file = `${this.getFileNamePrefix(proc)}_ema_chart.png`;
+                    trace(`ema chart file name: ${file}`);
                     if (this.emaOver4Collection[proc.pid]) {
                         // if we have exponential moving average data computed for this process then  write Chart for it.	
                         promises.push(this.writeChart(file, this.emaOver4Collection[proc.pid]));
                     }
                 }
             });
+            trace(`waiting for all chart files to be written out ...`);
             yield Promise.all(promises);
         });
     }
@@ -250,20 +218,21 @@ class Counters {
             const lines = [];
             const title = path.parse(file).name; //get just file name without directory paths and extension
             Object.keys(processCollection)
-                .filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp')
+                .filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp' && key !== 'pid' && key !== 'ppid')
                 .forEach(key => {
                 lines.push({
                     label: `${key}(${exports.ProcessStatisticsUnits[key]})`,
                     data: processCollection[key]
                 });
             });
+            trace(`xData:${utils_1.jsonDump(xData)}, lines:${utils_1.jsonDump(lines)}, xAxisLabel: ${xAxisLabel}, file:${file}, title:${title}`);
             yield charts_1.writeChartToFile(xData, lines, 'png', xAxisLabel, file, title);
         });
     }
     writeCollectionData() {
         return __awaiter(this, void 0, void 0, function* () {
             let promises = [];
-            [Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
+            [Counters.TotalsProcessInfo, ...this.processesToTrack].filter(proc => this.collection[proc.pid]).forEach((proc) => {
                 let file = `${this.getFileNamePrefix(proc)}_data.json`;
                 promises.push(writeFileAsync(file, utils_1.jsonDump(this.collection[proc.pid])));
                 if (this.includeMovingAverages) {
@@ -276,8 +245,12 @@ class Counters {
             yield Promise.all(promises);
         });
     }
-    getFileNamePrefix(proc) {
-        return path.join(this.outputDirectory, `${this.name}_${proc.name}_${proc.pid}`.replace('.', '_'));
+    getFileNamePrefix(proc = undefined) {
+        let file = path.join(this.outputDirectory, this.name);
+        if (proc) {
+            file = `${file}__${proc.name}_${proc.pid}`;
+        }
+        return file.replace('.', '_');
     }
     /**
      * This method resets this object. It stops any ongoing collection as well as clears any collected data.
@@ -410,7 +383,7 @@ class Counters {
             trace(`this.collection[Counters.TotalsProcessInfo.pid]: ${utils_1.jsonDump(this.collection[Counters.TotalsProcessInfo.pid])}`);
         });
     }
-    computePublishStatistics() {
+    computeAndWriteStatistics() {
         return __awaiter(this, void 0, void 0, function* () {
             const totalsStats = this.collection[-1];
             const datapoints = totalsStats.timestamp.length;
@@ -429,6 +402,8 @@ class Counters {
                 primaryMetric: 'MemoryMetric'
             };
             this.computedStatistics = computedStats;
+            const file = `${this.getFileNamePrefix()}_statistics.json`;
+            yield writeFileAsync(file, utils_1.jsonDump(computedStats));
         });
     }
     computeMovingAverages() {

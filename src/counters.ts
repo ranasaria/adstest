@@ -9,7 +9,7 @@ import { CountersOptions } from './counters';
 import { Min, Max, IsInt, validateSync, ValidationError, IsDefined, IsString, IsNotEmpty, IsBoolean, Matches } from 'class-validator';
 import { jsonDump, nullNanUndefinedEmptyCoalesce, getBoolean, ProcessInfo, getChildrenTree } from './utils';
 import { writeChartToFile, LineData } from './charts';
-import { isString, promisify } from 'util';
+import { promisify } from 'util';
 import path = require('path');
 import fs = require('fs');
 import os = require('os');
@@ -101,7 +101,7 @@ export interface CountersOptions {
 /**
  * The default values for CountersOptions.
  */
-export const DefaultCountersOptions: CountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.cwd()}` };
+export const DefaultCountersOptions: CountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.env.TEMP}` };
 
 /**
  * A class with methods that help to implement the counters collection for a test method.
@@ -303,7 +303,8 @@ export class Counters {
 		}
 
 		await this.computeTotals();
-		await this.computePublishStatistics();
+
+		promises.push(this.computeAndWriteStatistics());
 		if (this.dumpToFile) {
 			promises.push(this.writeCollectionData());
 			promises.push(this.writeProcessesInfos());
@@ -388,8 +389,12 @@ export class Counters {
 	}
 
 
-	private getFileNamePrefix(proc: ProcessInfo): string {
-		return path.join(this.outputDirectory, `${this.name}_${proc.name}_${proc.pid}`.replace('.', '_'));
+	private getFileNamePrefix(proc: ProcessInfo = undefined): string {
+		let file: string = path.join(this.outputDirectory, this.name);
+		if (proc) {
+			file = `${file}__${proc.name}_${proc.pid}`;
+		}
+		return file.replace('.', '_');
 	}
 
 	/**
@@ -542,7 +547,7 @@ export class Counters {
 		trace(`this.collection[Counters.TotalsProcessInfo.pid]: ${jsonDump(this.collection[Counters.TotalsProcessInfo.pid])}`)
 	}
 
-	private async computePublishStatistics(): Promise<void> {
+	private async computeAndWriteStatistics(): Promise<void> {
 		const totalsStats: ProcessStatisticsCollection = this.collection[-1];
 		const datapoints: number = totalsStats.timestamp.length;
 		let p95: number;
@@ -558,12 +563,13 @@ export class Counters {
 			fiftiethPercentile: p50,
 			average: mean(totalsStats.memory),
 			primaryMetric: 'MemoryMetric'
-		}
+		};
 		this.computedStatistics = computedStats;
+		const file = `${this.getFileNamePrefix()}_statistics.json`;
+		await writeFileAsync(file, jsonDump(computedStats));
 	}
 
 	private async computeMovingAverages(): Promise<void> {
-
 		for (let collectionStats of this.collection.values()) {
 			this.smaOver4Collection[collectionStats.pid] = {
 				pid: collectionStats.pid,

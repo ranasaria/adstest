@@ -33,7 +33,7 @@ export interface StressResult {
 }
 /**
  * A class with methods that help to implement the stressify decorator.
- * Keeping the core logic of stressification in one place as well as allowing this code to use
+ * Keeping the core logic of `stressification` in one place as well as allowing this code to use
  * other decorators if needed.
  */
 export declare class Stress {
@@ -82,4 +82,4 @@ export declare class Stress {
  * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
  */
-export declare function stressify({ runtime, dop, iterations, passThreshold }?: StressOptions): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;
+export declare function stressify({ runtime, dop, iterations, passThreshold }?: StressOptions, collectCounters?: boolean): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;
