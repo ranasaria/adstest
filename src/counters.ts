@@ -362,7 +362,7 @@ export class Counters {
 		const lines: LineData[] = [];
 		const title = path.parse(file).name; //get just file name without directory paths and extension
 		Object.keys(processCollection)
-			.filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp' && key !== 'pid' && key !== 'ppid')
+			.filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'pid' && key !== 'ppid')
 			.forEach(key => {
 				lines.push({
 					label: `${key}(${ProcessStatisticsUnits[key]})`,
@@ -370,7 +370,7 @@ export class Counters {
 				});
 			});
 		trace(`xData:${jsonDump(xData)}, lines:${jsonDump(lines)}, xAxisLabel: ${xAxisLabel}, file:${file}, title:${title}`);
-		await writeChartToFile(xData, lines, 'png', xAxisLabel, file, title);
+		await writeChartToFile(xData, lines, 'png', processCollection.timestamp[0], xAxisLabel, file, title);
 	}
 
 	private async writeCollectionData(): Promise<void> {

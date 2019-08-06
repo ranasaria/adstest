@@ -7,7 +7,7 @@
 */
 import { CanvasRenderService, MimeType } from 'chartjs-node-canvas';
 import { ChartConfiguration } from 'chart.js';
-import { jsonDump } from './utils';
+import { jsonDump, toDateTimeString } from './utils';
 import { Color } from 'color';
 
 const logPrefix = 'adstest:counters:charts';
@@ -34,7 +34,9 @@ export interface LineData {
  * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-export async function writeChartToFile(xData: any[], lines: LineData[], fileType: string = 'png', xAxisLabel: string = 'elapsed(ms)', file: string = null, title: string = null): Promise<Buffer> {
+export async function writeChartToFile(xData: any[], lines: LineData[], fileType: string = 'png', startTimeStamp: number = 0, xAxisLabel: string = 'elapsed(ms)', file: string = null, title: string = null): Promise<Buffer> {
+	xAxisLabel = `${xAxisLabel}, Start time:${toDateTimeString(startTimeStamp)}`;
+	xData = xData.map(x => x - xData[0]);
 	const configuration: ChartConfiguration = {
 		// See https://www.chartjs.org/docs/latest/configuration        
 		type: 'line',
@@ -46,7 +48,7 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 				fontSize: 50,
 				position: 'bottom',
 				text: title
-			},	
+			},
 			scales: {
 				xAxes: [{
 					gridLines: {
@@ -56,12 +58,12 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 					scaleLabel: {
 						display: true,
 						labelString: xAxisLabel
-					  },
-				}],				
+					},
+				}],
 				yAxes: [{
 					ticks: {
 						// Include a % sign in the ticks on y-axis
-						callback: function(value, index, values) {
+						callback: function (value, index, values) {
 							return value + '%';
 						}
 					},
@@ -79,34 +81,27 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 	};
 	debug("lines:", jsonDump(lines));
 	debug("empty configuration", jsonDump(configuration));
-	const randomColor = require('randomcolor');
-	const rColors: Color[] = randomColor({
-		luminosity: 'bright', 
-		format: 'rgb', 
-		count: lines.length, 
-		seed: 5
-	});
-	const colors: Color[] = rColors.map(rc => require('color')(rc));
+	//const colors: Color[] = getColor(lines);
 	for (const [index, line] of lines.entries()) {
-		debug(`index: ${index}, line: ${jsonDump(line)}`);			
+		debug(`index: ${index}, line: ${jsonDump(line)}`);
 		let min: number = Math.min(...line.data);
 		let max: number = Math.max(...line.data);
 		let data = line.data;
-		let label = line.label;		
-		if (min == max)	{
+		let label = line.label;
+		if (min == max) {
 			// please it a random location between 0 and 100, but we move it same amount up and down so find a random number between 0 and 50 to adjust min and max by that amount
-			const randomShift = Math.ceil(Math.random()*50);
+			const randomShift = Math.ceil(Math.random() * 50);
 			label = `${line.label}:${randomShift.toPrecision(3)}%=${min} & zero at:0`;
 			data = line.data.map(y => randomShift);
 		} else {
-			label = `${line.label}:1%=${((max-min)/100).toPrecision(3)} & zero at:${min.toPrecision(3)}`;
-			data = line.data.map(y => (y-min)*100/(max-min));
+			label = `${line.label}:1%=${((max - min) / 100).toPrecision(3)} & zero at:${min.toPrecision(3)}`;
+			data = line.data.map(y => (y - min) * 100 / (max - min));
 		}
-		const color: Color = colors[index];
+		const color: Color = getColor(index);
 		configuration.data.datasets.push({
 			fill: false,
 			borderColor: `${color}`,
-			backgroundColor: `${color.alpha(0.7)}`,			
+			backgroundColor: `${color.alpha(0.7)}`,
 			borderWidth: 4,
 			pointRadius: 6,
 			pointBackgroundColor: '#fff', // white
@@ -114,7 +109,7 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 			data: data, //convert y values to percentages
 		});
 	}
-	debug("filled out configuration", jsonDump(configuration));	
+	debug("filled out configuration", jsonDump(configuration));
 	const width = 1600; //px
 	const height = 900; //px
 	const canvasRenderService = new CanvasRenderService(width, height, (ChartJS) => {
@@ -125,19 +120,33 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 		ChartJS.defaults.global.defaultFontSize = 16;
 	});
 	const mimeType: MimeType = getMimeType(fileType);
-	const image: Buffer = await canvasRenderService.renderToBuffer(configuration, mimeType);	
+	const image: Buffer = await canvasRenderService.renderToBuffer(configuration, mimeType);
 	if (file) {
 		const fs = require('fs');
-		let fd;		
+		let fd;
 		try {
 			fd = fs.openSync(file, 'w');
 			fs.writeSync(fd, image);
-			debug(`The chart file:${file} was written out.`);	
+			debug(`The chart file:${file} was written out.`);
 		} finally {
 			fs.closeSync(fd);
 		}
 	}
 	return image;
+}
+
+function getColor(index: number): Color {
+	const pallette: string[] = ['darkorange', 'deeppink', 'forestgreen', 'brown', 'blue', 'darkgreen', 'goldenrod', 'darkcyan', 'red', 'darkmagenta', 'black', 'hotpink'];
+	const color = require('color');
+	if (index < pallette.length) {
+		return color(pallette[index]);
+	}
+	else {
+		const randomColor = require('randomcolor');
+		return color(randomColor({
+			format: 'rgb',
+		}));
+	}
 }
 
 function getMimeType(fileType: string): MimeType {
