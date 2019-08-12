@@ -26,8 +26,8 @@ interface StressParamType {
 };
 
 class StressifyTester {
-	static dop: number = 5;
-	static iter: number = 6;
+	static dop: number = 10;
+	static iter: number = 1000;
 	static runtime: number = 0.05; //seconds
 
 	t: number = 0;
@@ -56,6 +56,11 @@ class StressifyTester {
 		await this.failedErroredExecutions();
 	}
 
+	@stressify({ dop: StressifyTester.dop, iterations: StressifyTester.iter, passThreshold: 0.5 })
+	async passThresholdMet(): Promise<any> {
+		await this.failedErroredExecutions();
+	}
+
 	private async failedErroredExecutions() {
 		this.t++;
 		if (this.t % 7 === 0) { //for every 7th invocation
@@ -69,11 +74,6 @@ class StressifyTester {
 		await sleep(2); // sleep for 2 ms without spinning
 	}
 
-	@stressify({ dop: StressifyTester.dop, iterations: StressifyTester.iter, passThreshold: 0.5 })
-	async passThresholdMet(): Promise<any> {
-		await this.failedErroredExecutions();
-	}
-
 	@stressify({ runtime: StressifyTester.runtime, dop: StressifyTester.dop, iterations: Stress.MaxIterations, passThreshold: 1 }, false /* collectCounters */)
 	async timeOutTest(): Promise<any> {
 		await bear();	// yield to other operations.
@@ -81,15 +81,14 @@ class StressifyTester {
 	}
 }
 
-before('Stress automation setup', function(){
+before('Stress automation setup', function () {
 	var tmpObj = tmp.dirSync({ mode: 0o777, prefix: 'StressUnitTests_' });
 	process.env.CountersOutputDirectory = tmpObj.name;
 	debug('temp output directory', process.env.CountersOutputDirectory);
 })
 
-after('Stress automation cleanup', function(){
-	if (getBoolean(process.env.DontCleanupTestGeneratedFiles))
-	{
+after('Stress automation cleanup', function () {
+	if (getBoolean(process.env.DontCleanupTestGeneratedFiles)) {
 		debug(`process.env.DontCleanupTestGeneratedFiles is set to '${process.env.DontCleanupTestGeneratedFiles}', so skipping temporary files cleanup`);
 	}
 	else {
@@ -99,19 +98,20 @@ after('Stress automation cleanup', function(){
 	}
 })
 
-
-beforeEach('Stress automation beforeEach Test Setup', function() {
+beforeEach('Stress automation beforeEach Test Setup', function () {
 	process.env.CountersCollectionInterval = '10'; // collect every 10 milliseconds
 })
 
-afterEach('Stress automation afterEach Test Cleanup', function() {
-	delete process.env.CountersCollectionInterval; // collect every 10 milliseconds
-
+afterEach('Stress automation afterEach Test Cleanup', function () {
+	delete process.env.CountersCollectionInterval;
 })
 
 suite('Stress automation unit tests', function () {
 	// set a higher timeout value
-	this.timeout(10000); // allow 10 seconds for each test to complete
+	const timeout: number = 500000;
+	if (this.timeout() < timeout) {
+		this.timeout(timeout); // increase timeout for each test to complete, when debug info is turned out there can be considerable slow down.
+	}
 
 	//Environment Variable Tests
 	//
@@ -309,12 +309,19 @@ suite('Stress automation unit tests', function () {
 		assert.doesNotThrow(async () => {
 			debug('invoking passThresholdMet()');
 			const stressifier = new StressifyTester();
-			let retVal: StressResult = await stressifier.passThresholdMet();
-			debug(`test testStressStats done, total invocations=${stressifier.t}`);
-			debug(`test retVal is ${jsonDump(retVal)}`);
-			assert(retVal.numPasses + retVal.fails.length + retVal.errors.length === StressifyTester.dop * StressifyTester.iter, `total invocations should be ${StressifyTester.dop * StressifyTester.iter}`);
-			assert.equal(retVal.fails.length, stressifier.f, `Number of failures does not match the expected`);
-			assert.equal(retVal.errors.length, stressifier.e, `Number of errors does not match the expected`);
+			try {
+				let retVal: StressResult = await stressifier.passThresholdMet();
+
+				debug(`test passThresholdMet done, total invocations=${stressifier.t}`);
+				debug(`test retVal is ${jsonDump(retVal)}`);
+				assert(retVal.numPasses + retVal.fails.length + retVal.errors.length === StressifyTester.dop * StressifyTester.iter, `total invocations should be ${StressifyTester.dop * StressifyTester.iter}`);
+				assert.equal(retVal.fails.length, stressifier.f, `Number of failures does not match the expected`);
+				assert.equal(retVal.errors.length, stressifier.e, `Number of errors does not match the expected`);
+			}
+			catch (e) {
+				debug(`error:${e}`);
+				throw e;
+			}
 		}, `passThreshold should have been met and the test should have passed`);
 	});
 
@@ -328,7 +335,7 @@ suite('Stress automation unit tests', function () {
 			assert(false, "Error was not thrown when one was expected");
 		}
 		catch (err) {
-			debug(`test testStressStats done, total invocations=${stressifier.t}`);
+			debug(`test passThresholdFailed done, total invocations=${stressifier.t}`);
 			trace(`Exception caught:${err}::${jsonDump(err)}, each is being verified to be AssertionError type and is being swallowed`);
 			assert(err instanceof AssertionError);
 		}

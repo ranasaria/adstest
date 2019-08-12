@@ -135,8 +135,8 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 	return image;
 }
 
+const pallette: string[] = ['darkorange', 'deeppink', 'forestgreen', 'brown', 'blue', 'darkgreen', 'goldenrod', 'darkcyan', 'red', 'darkmagenta', 'black', 'hotpink'];
 function getColor(index: number): Color {
-	const pallette: string[] = ['darkorange', 'deeppink', 'forestgreen', 'brown', 'blue', 'darkgreen', 'goldenrod', 'darkcyan', 'red', 'darkmagenta', 'black', 'hotpink'];
 	const color = require('color');
 	if (index < pallette.length) {
 		return color(pallette[index]);

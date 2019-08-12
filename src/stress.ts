@@ -263,14 +263,20 @@ const stresser = new Stress();
 
 /**
  * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
-* 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
-* 	of the function being modified.
- * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+ * 	of the function being modified.
+ *
+ * @export
+ * @param {StressOptions}: Stress options for Stress.
+  	* @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+	* @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+	* @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+	* @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * @param {boolean} [collectCounters=true] - if true we collect counters for this stress run.
+ * @param {number} [rootPidForCounters=process.pid] - if specied we collect counters for all children recursively starting from this pid's parent.
+ * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor}
  */
-export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}, collectCounters: boolean = true): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}, collectCounters: boolean = true, rootPidForCounters: number = process.pid): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
 	const debug = require('debug')(`${logPrefix}:stressify`);
 	// return the function that does the job of stressifying a test class method with decorator @stressify
 	//
@@ -299,7 +305,8 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 					await Counters.CollectPerfCounters(async () => {
 						result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
 						}, 
-						`${target.constructor.name}_${memberName}`
+						`${target.constructor.name}_${memberName}`,
+						rootPidForCounters
 					);
 				} else {
 					result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
