@@ -110,7 +110,7 @@ suite('Stress automation unit tests', function () {
 	// set a higher timeout value
 	const timeout: number = 500000;
 	if (this.timeout() < timeout) {
-		this.timeout(timeout); // increase timeout for each test to complete, when debug info is turned out there can be considerable slow down.
+		this.timeout(timeout); // increase timeout for each test to complete, when debug logging to console is turned out there can be considerable slow down.
 	}
 
 	//Environment Variable Tests
