@@ -89,7 +89,7 @@ export async function writeChartToFile(xData: number[], lines: LineData[], fileT
 		let data = line.data;
 		let label = line.label;
 		if (min == max) {
-			// place it a random location between 0 and 100, since we have a horizontal lines and we do not want all lines to overlap
+			// place it a random location between 0 and 100, since we have horizontal lines and we do not want all lines to overlap
 			const randomShift = Math.ceil(Math.random() * 50);
 			label = `${line.label}:${randomShift.toPrecision(3)}%=${min} & zero at:0`;
 			data = line.data.map(y => randomShift);
