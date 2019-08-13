@@ -13,7 +13,7 @@
                 "-r",
                 "ts-node/register",
                 "--timeout",
-                "999999",
+                "99999999",
                 "--colors",
                 "--watch-extensions",
                 "tsx,ts",
@@ -21,16 +21,18 @@
                 "tdd",
                 "**/test/*.test.ts",
                 "-g",
-                "multiple threads"
+                "hreshold met"
             ],
             "env": {
                 "TS_NODE_PROJECT": "src/tsconfig.json",
-                "CountersCollectionInterval": "10"
+                "CountersCollectionInterval": "10",
+                "DontCleanupTestGeneratedFiles": "true",
+                "DEBUG": "*ount*,*tress*"
             },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",
             "protocol": "inspector",
-            "timeout": 999999
+            "timeout": 9999999
         }
     ]
 }
