@@ -28,13 +28,13 @@ export interface LineData {
  *
  *
  * @export
- * @param {any[]} xData - array of labels (the x - coordinates/labels of the points)
+ * @param {number[]} xData - array of labels (the x - coordinates/labels of the points)
  * @param {LineData[]} lines - array of {@link LineData} objects
  * @param {string} [fileType='png'] - supported values are 'png' or 'jpeg'. 'jpg' is considered synonym of 'jpeg'
  * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-export async function writeChartToFile(xData: any[], lines: LineData[], fileType: string = 'png', startTimeStamp: number = 0, xAxisLabel: string = 'elapsed(ms)', file: string = null, title: string = null): Promise<Buffer> {
+export async function writeChartToFile(xData: number[], lines: LineData[], fileType: string = 'png', startTimeStamp: number = 0, xAxisLabel: string = 'elapsed(ms)', file: string = null, title: string = null): Promise<Buffer> {
 	xAxisLabel = `${xAxisLabel}, Start time:${toDateTimeString(startTimeStamp)}`;
 	xData = xData.map(x => x - xData[0]);
 	const configuration: ChartConfiguration = {
@@ -89,11 +89,12 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 		let data = line.data;
 		let label = line.label;
 		if (min == max) {
-			// please it a random location between 0 and 100, but we move it same amount up and down so find a random number between 0 and 50 to adjust min and max by that amount
+			// place it a random location between 0 and 100, since we have a horizontal lines and we do not want all lines to overlap
 			const randomShift = Math.ceil(Math.random() * 50);
 			label = `${line.label}:${randomShift.toPrecision(3)}%=${min} & zero at:0`;
 			data = line.data.map(y => randomShift);
-		} else {
+		} else { 
+			//convert data values to percentages
 			label = `${line.label}:1%=${((max - min) / 100).toPrecision(3)} & zero at:${min.toPrecision(3)}`;
 			data = line.data.map(y => (y - min) * 100 / (max - min));
 		}
@@ -106,7 +107,7 @@ export async function writeChartToFile(xData: any[], lines: LineData[], fileType
 			pointRadius: 6,
 			pointBackgroundColor: '#fff', // white
 			label: label, // include the scaling factor in the label
-			data: data, //convert y values to percentages
+			data: data.map((value: number, index: number) => { return { x: xData[index], y: value } })
 		});
 	}
 	debug("filled out configuration", jsonDump(configuration));

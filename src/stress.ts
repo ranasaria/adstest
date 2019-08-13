@@ -276,7 +276,7 @@ const stresser = new Stress();
  * @param {number} [rootPidForCounters=process.pid] - if specied we collect counters for all children recursively starting from this pid's parent.
  * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor}
  */
-export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}, collectCounters: boolean = true, rootPidForCounters: number = process.pid): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}, collectCounters: boolean = true, rootPidForCounters: number = undefined): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
 	const debug = require('debug')(`${logPrefix}:stressify`);
 	// return the function that does the job of stressifying a test class method with decorator @stressify
 	//
@@ -306,7 +306,7 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 						result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
 						}, 
 						`${target.constructor.name}_${memberName}`,
-						rootPidForCounters
+						getRootPid(rootPidForCounters)
 					);
 				} else {
 					result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
@@ -322,4 +322,26 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 		//
 		return memberDescriptor;
 	};
+}
+
+/**
+ * returns the root pid for which to collect counters. if {@link inputPid} is defined and a valid number then that value is returned else the value
+ * parsed from environment variable PerfPidForCollection is returned. If the environment variable value is also not a valid number then current process pid is returned.
+ *
+ * @param {number} inputPid - 
+ * @returns {number}
+ */
+function getRootPid (inputPid: number): number {
+	if (inputPid !== null &&  !isNaN(inputPid)) {
+		return inputPid;
+	}
+
+	if (!process.env.PerfPidForCollection) {
+		return process.pid;
+	}
+	const pid:number = parseInt(process.env.PerfPidForCollection);
+	if (isNaN(pid)) {
+		return process.pid;
+	}
+	return pid;
 }

@@ -355,7 +355,7 @@ export class Counters {
 	private async writeChart(file: string, processCollection: ProcessStatisticsCollection): Promise<void> {
 		const trace = require('debug')(`${logPrefix}:writeChart:trace`);
 		trace(`processStats=${jsonDump(processCollection)}`);
-		const xKey = 'elapsed';
+		const xKey = 'timestamp';
 		const xData: number[] = processCollection[xKey];
 		const xAxisLabel = `${xKey}(${ProcessStatisticsUnits[xKey]})`;
 		const lines: LineData[] = [];
