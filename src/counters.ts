@@ -456,7 +456,6 @@ export class Counters {
 			this.countersTimer.unref();
 			this.countersTimer = null;
 		}
-		await this.countersCollectionPromise;
 	}
 
 	private async startPopulatingProcessInfos(): Promise<void> {
