@@ -1,4 +1,4 @@
-import { CountersOptions } from './counters';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
@@ -19,13 +19,17 @@ import assert = require('assert');
 import { ma as sma, ema } from 'moving-averages';
 import { mean, quantile } from 'simple-statistics';
 
-const writeFileAsync = promisify(fs.writeFile);
+const writeFileWithPromise = promisify(fs.writeFile);
 const logPrefix = 'adstest:counters';
 const debug = require('debug')(`${logPrefix}`);
 
 /**
  * A data structure to hold all the computed statistics for a test runs.
  * These are the various computed metrics for the test that we spit out.
+ * The structure of this object mimics the fields of the data structure that needs to pushed to performance
+ * frameworks so that we can baseline our results and hold the baseline from run to run. These baseline and tracking
+ * variations from baseline is all done by the performance frameworks so long as we generate the information in this format
+ * and publish it to those frameworks.
  * @export
  * @interface ComputedStatistics
  */
@@ -84,14 +88,14 @@ export const ProcessStatisticsUnits: any = {
 
 /**
  * Defines an interface to specify the counters options for counters tests.
- * @param collectionInterval - the number of milliseconds after which the counters are collected. Default value is provided by environment variable: CountersCollectionInterval and if undefined then by {@link DefaultCountersOptions}.
+ * @param collectionIntervalMs - the number of milliseconds after which the counters are collected. Default value is provided by environment variable: CountersCollectionIntervalMs and if undefined then by {@link DefaultCountersOptions}.
  * @param includeMovingAverages - flag if we should compute movingAverages. Default value is provided by environment variable: CountersIncludeMovingAverages and if undefined then by {@link DefaultCountersOptions}.
  * @param dumpToFile - flag if counters should be dumped to file. Default value is provided by environment variable: CountersDumpToFile and if undefined then by {@link DefaultCountersOptions}.
  * @param dumpToChart - flag if counters should be dumped to charts. Default value is provided by environment variable: CountersDumpToChart and if undefined then by {@link DefaultCountersOptions}.
  * @param outputDirectory - provides path to outputDirectory where output files are written. Default value is provided by environment variable: CountersOutputDirectory and if undefined then by {@link DefaultCountersOptions}.
  */
 export interface CountersOptions {
-	collectionInterval?: number;
+	collectionIntervalMs?: number;
 	includeParent?: boolean;
 	includeMovingAverages?: boolean;
 	dumpToFile?: boolean;
@@ -102,14 +106,14 @@ export interface CountersOptions {
 /**
  * The default values for CountersOptions.
  */
-export const DefaultCountersOptions: CountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.env.TEMP}` };
+export const DefaultCountersOptions: CountersOptions = { collectionIntervalMs: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${os.tmpdir()}` };
 
 /**
  * A class with methods that help to implement the counters collection for a test method.
  */
 export class Counters {
-	static readonly MaxCollectionInterval = 3600 * 1000; // in ms. MaxValue is 1 hour.
-	static readonly ProcessInfoUpdationInterval = 10 * 1000; // 10 milliseconds. It takes 2-4 seconds to gather process information typically, so this value should not be lower than 5 seconds.
+	static readonly MaxCollectionIntervalMs = 3600 * 1000; // in ms. MaxValue is 1 hour.
+	static readonly ProcessInfoUpdateIntervalMs = 10 * 1000; // 10 seconds. It takes 2-4 seconds to gather process information typically, so this value should not be lower than 5 seconds.
 
 	// We designate a pid and ppid of -1 for an artificial ProcessInfo object for keeping track of totals
 	static readonly TotalsProcessInfo: ProcessInfo = {
@@ -145,8 +149,8 @@ export class Counters {
 	@IsDefined()
 	@IsInt()
 	@Min(0)
-	@Max(Counters.MaxCollectionInterval)
-	public readonly collectionInterval: number;
+	@Max(Counters.MaxCollectionIntervalMs)
+	public readonly collectionIntervalMs: number;
 
 	/**
 	 * whether we should include parent of the pid in the process that we are tracking. Including parent implies
@@ -215,7 +219,7 @@ export class Counters {
 	 */
 	public collection: Map<number, ProcessStatisticsCollection> = new Map<number, ProcessStatisticsCollection>();
 
-	/**yarn
+	/**
 	 * the simple moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
 	 *
 	 * @type {Map<number,ProcessStatisticsCollection>}
@@ -247,16 +251,16 @@ export class Counters {
 	  * @param pid -  the root pid of processes that we are tracking
 	  * @param includeParent - flag to indicate if we should include parent of the pid in the process that we are tracking. Including parent implies we track all of the parent's children and not just the process designated by {@link pid}
 	  * @param object of @type {CountersOptions} with:
-			* @param collectionInterval - see {@link CountersOptions}.
+			* @param collectionIntervalMs - see {@link CountersOptions}.
 			* @param includeMovingAverages - see {@link CountersOptions}.
 			* @param dumpToFile - see {@link CountersOptions}.
 			* @param dumpToChart - see {@link CountersOptions}.
 			* @param outputDirectory - see {@link CountersOptions}. 
 	  */
-	constructor(name: string, pid: number = process.pid, includeParent: boolean = true, { collectionInterval: collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}) {
+	constructor(name: string, pid: number = process.pid, includeParent: boolean = true, { collectionIntervalMs: collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}) {
 		const trace = require('debug')(`${logPrefix}:constructor:trace`);
 		trace(`parameters: name=${name}`);
-		trace(`parameters: collectionInterval=${collectionInterval}`);
+		trace(`parameters: collectionIntervalMs=${collectionIntervalMs}`);
 		trace("parameters: includeMovingAverages:", includeMovingAverages);
 		trace("parameters: dumpToFile:", dumpToFile);
 		trace("parameters: dumpToChart:", dumpToChart);
@@ -264,7 +268,7 @@ export class Counters {
 		this.name = name;
 		this.pid = pid;
 		this.includeParent = includeParent;
-		this.collectionInterval = Counters.getCollectionInterval(collectionInterval);
+		this.collectionIntervalMs = Counters.getCollectionInterval(collectionIntervalMs);
 		this.includeMovingAverages = Counters.getIncludeMovingAverages(includeMovingAverages);
 		this.dumpToFile = Counters.getDumpToFile(dumpToFile);
 		this.dumpToChart = Counters.getDumpToChart(dumpToChart);
@@ -278,7 +282,7 @@ export class Counters {
 			throw validationErrors;
 		}
 
-		trace(`default properties this object after construction: this.name=${this.name}, this.pid=${this.pid}, this.includeParent=${this.includeParent}, this.collectionInterval=${this.collectionInterval}, this.includeMovingAverages=${this.includeMovingAverages}, this.dumpToFile=${this.dumpToFile}, this.dumpToChart=${this.dumpToChart}, this.outputDirectory=${this.outputDirectory}`);
+		trace(`default properties this object after construction: this.name=${this.name}, this.pid=${this.pid}, this.includeParent=${this.includeParent}, this.collectionIntervalMs=${this.collectionIntervalMs}, this.includeMovingAverages=${this.includeMovingAverages}, this.dumpToFile=${this.dumpToFile}, this.dumpToChart=${this.dumpToChart}, this.outputDirectory=${this.outputDirectory}`);
 	}
 
 	/**
@@ -288,7 +292,7 @@ export class Counters {
 		//stop collection first in case it is already in progress. This is inferred by in progress(defined) timers
 		//
 		if (this.countersTimer || this.processesToTrackTimer) {
-			this.stop();
+			await this.stop();
 		}
 		await this.startPopulatingProcessInfos();
 		await this.startCollecting();
@@ -312,10 +316,14 @@ export class Counters {
 			await this.computeMovingAverages();
 		}
 
+		// We now write out a bunch of files. These are for the data collected, the process information for which we collected
+		// the data, the moving averages of the data, the statistical computations (ComputedStatistics) on the data, 
+		// the charts for all data and the moving averages. Since these are all quite independent tasks all based off the data that we collected
+		// and since all are being written to separate files we start them all in parallel and then wait for all of them to complete.
 		promises.push(this.computeAndWriteStatistics());
 		if (this.dumpToFile) {
 			promises.push(this.writeCollectionData());
-			promises.push(writeFileAsync(`${this.getOutputFileNameForProcess()}_processInfo.json`, jsonDump(this.processesToTrack)));
+			promises.push(writeFileWithPromise(`${this.getOutputFileNameForProcess()}_processInfo.json`, jsonDump(this.processesToTrack)));
 		}
 		if (this.dumpToChart) {
 			promises.push(this.writeCharts());
@@ -373,14 +381,16 @@ export class Counters {
 	}
 
 	private async writeCollectionData(): Promise<void> {
+		// data, simple moving average data and exponential moving average data are all written to different files
+		// so we kick them all off and then wait for all of them to complete.
 		let promises: Promise<void>[] = [];
-			let file = `${this.getOutputFileName()}_data.json`;
-		promises.push(writeFileAsync(file, jsonDump(this.collection)));
+		let file = `${this.getOutputFileName()}_data.json`;
+		promises.push(writeFileWithPromise(file, jsonDump(this.collection)));
 		if (this.includeMovingAverages) {
 			file = `${this.getOutputFileName()}_sma_data.json`;
-			promises.push(writeFileAsync(file, jsonDump(this.smaOver4Collection)));
+			promises.push(writeFileWithPromise(file, jsonDump(this.smaOver4Collection)));
 			file = `${this.getOutputFileName()}_ema_data.json`;
-			promises.push(writeFileAsync(file, jsonDump(this.emaOver4Collection)));
+			promises.push(writeFileWithPromise(file, jsonDump(this.emaOver4Collection)));
 		}
 		await Promise.all(promises);
 	}
@@ -389,7 +399,7 @@ export class Counters {
 	private getOutputFileNameForProcess(proc: ProcessInfo = undefined): string {
 		let file: string = this.getOutputFileName();
 		if (proc) {
-			file = proc.pid > 0 ? `${file}__${proc.name}_${proc.pid}` :  `${file}__${proc.name}` ;
+			file = proc.pid > 0 ? `${file}__${proc.name}_${proc.pid}` : `${file}__${proc.name}`;
 		}
 		return file.replace('.', '_');
 	}
@@ -418,13 +428,13 @@ export class Counters {
 	private countersTimer: NodeJS.Timer = null;
 
 	// Promise for updating processesToTrack in case the process at the root of {@link pid} has changed.
-	private processesToTrackUpdationPromise: Promise<void> = null;
+	private processesToTrackUpdatePromise: Promise<void> = null;
 
 	// Promise for collecting the statistics of the  processes that we are tracking.
 	private countersCollectionPromise: Promise<void> = null;
 
 	// flag for updating processesToTrack in case the process at the root of {@link pid} has changed.
-	private processesToTrackUpdationInProgress: boolean = false;
+	private processesToTrackUpdateInProgress: boolean = false;
 
 	// flag for collecting the statistics of the  processes that we are tracking.
 	private countersCollectionInProgress: boolean = false;
@@ -435,7 +445,7 @@ export class Counters {
 			this.processesToTrackTimer.unref();
 			this.processesToTrackTimer = null;
 		}
-		await this.processesToTrackUpdationPromise;
+		await this.processesToTrackUpdatePromise;
 
 	}
 
@@ -452,24 +462,24 @@ export class Counters {
 	private async startPopulatingProcessInfos(): Promise<void> {
 		assert(this.processesToTrackTimer === null, `the processesToTrackTimer should be null when we startPopulatingProcessInfos`);
 		const getProcessInfos = async () => {
-			// start updating processesToTrack unless previous updation is still in progress.
-			if (!this.processesToTrackUpdationInProgress) {
+			// start updating processesToTrack unless previous update is still in progress.
+			if (!this.processesToTrackUpdateInProgress) {
 				debug(`getting current processInfo for ${this.name}`)
-				this.processesToTrackUpdationInProgress = true;
+				this.processesToTrackUpdateInProgress = true;
 				this.processesToTrack = await getChildrenTree(this.pid, this.includeParent);
-				this.processesToTrackUpdationInProgress = false;
+				this.processesToTrackUpdateInProgress = false;
 			}
 		};
 		// kickoff the collection of processes to track and await 
 		// them to be collected for the first time so that processesToTrack is initialized
-		this.processesToTrackUpdationPromise = getProcessInfos();
-		await this.processesToTrackUpdationPromise; //if we do not await here we will start trying to collect the perf counters when we have not yet figured what full set of processes to track, so we await here for all the processes to be tracked to become available.
+		this.processesToTrackUpdatePromise = getProcessInfos();
+		await this.processesToTrackUpdatePromise; //if we do not await here we will start trying to collect the perf counters when we have not yet figured what full set of processes to track, so we await here for all the processes to be tracked to become available.
 		// set a timer to keep getting processes to track at regular intervals.
 		this.processesToTrackTimer = setInterval(() => {
-			if (!this.processesToTrackUpdationInProgress) {
-				this.processesToTrackUpdationPromise = getProcessInfos();
+			if (!this.processesToTrackUpdateInProgress) {
+				this.processesToTrackUpdatePromise = getProcessInfos();
 			}
-		}, Counters.ProcessInfoUpdationInterval);
+		}, Counters.ProcessInfoUpdateIntervalMs);
 	}
 
 	private async startCollecting(): Promise<void> {
@@ -513,7 +523,7 @@ export class Counters {
 			if (!this.countersCollectionInProgress) {
 				this.countersCollectionPromise = collectCounters();
 			}
-		}, this.collectionInterval);
+		}, this.collectionIntervalMs);
 	}
 
 
@@ -573,7 +583,7 @@ export class Counters {
 		};
 		this.computedStatistics = computedStats;
 		const file = `${this.getOutputFileNameForProcess()}_statistics.json`;
-		await writeFileAsync(file, jsonDump(computedStats));
+		await writeFileWithPromise(file, jsonDump(computedStats));
 	}
 
 	private async computeMovingAverages(): Promise<void> {
@@ -622,7 +632,7 @@ export class Counters {
 
 	private static getCollectionInterval(input?: number): number {
 		return nullNanUndefinedEmptyCoalesce(input,
-			nullNanUndefinedEmptyCoalesce(parseInt(process.env.CountersCollectionInterval), DefaultCountersOptions.collectionInterval));
+			nullNanUndefinedEmptyCoalesce(parseInt(process.env.CountersCollectionIntervalMs), DefaultCountersOptions.collectionIntervalMs));
 	}
 
 	private static getOutputDirectory(input?: string): string {
@@ -643,12 +653,12 @@ export class Counters {
 	 * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
 	 * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process. 
 	 * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
-	 * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+	 * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
 	 * @returns {Promise<void>} - returns a promise.
 	 * @memberof Counters
 	 */
-	public static async CollectPerfCounters(closureForCollection: () => void, name: string, pid: number = process.pid, includeParent: boolean = true, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): Promise<void> {
-		const countersCollector = new Counters(name, pid, includeParent, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+	public static async CollectPerfCounters(closureForCollection: () => void, name: string, pid: number = process.pid, includeParent: boolean = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): Promise<void> {
+		const countersCollector = new Counters(name, pid, includeParent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
 		await countersCollector.start();
 		await closureForCollection();
 		await countersCollector.stop();
@@ -664,14 +674,14 @@ export class Counters {
  * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
  * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process. 
  * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
- * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+ * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
  * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor} - returns the decorator method that is modified version of the method being decorated. 
  */
-export function collectPerfCounters(name: string, pid: number = process.pid, includeParent: boolean = true, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+export function collectPerfCounters(name: string, pid: number = process.pid, includeParent: boolean = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
 	const debug = require('debug')(`${logPrefix}:collectPerfCounters`);
 	// return the function that does the job of collecting the perf counters on an object instance method with decorator @collectPerfCounters
 	//
-	debug(`collectPerfCounters FactoryDecorator called with name=${name}, pid=${pid}, includeParent=${includeParent}, collectionInterval=${collectionInterval}, includeMovingAverages=${includeMovingAverages}, dumpToFile, dumpToChart, outputDirectory `);
+	debug(`collectPerfCounters FactoryDecorator called with name=${name}, pid=${pid}, includeParent=${includeParent}, collectionIntervalMs=${collectionIntervalMs}, includeMovingAverages=${includeMovingAverages}, dumpToFile, dumpToChart, outputDirectory `);
 
 	// The actual decorator function that modifies the original target method pointed to by the memberDescriptor
 	//
@@ -690,7 +700,7 @@ export function collectPerfCounters(name: string, pid: number = process.pid, inc
 			//
 			await Counters.CollectPerfCounters(async () => {
 				await originalMethod.apply(this, args);
-			}, name, pid, includeParent, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+			}, name, pid, includeParent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
 		};
 
 		// return the original descriptor unedited.

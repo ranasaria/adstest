@@ -99,11 +99,11 @@ after('Stress automation cleanup', function () {
 })
 
 beforeEach('Stress automation beforeEach Test Setup', function () {
-	process.env.CountersCollectionInterval = '10'; // collect every 10 milliseconds
+	process.env.CountersCollectionIntervalMs = '10'; // collect every 10 milliseconds
 })
 
 afterEach('Stress automation afterEach Test Cleanup', function () {
-	delete process.env.CountersCollectionInterval;
+	delete process.env.CountersCollectionIntervalMs;
 })
 
 suite('Stress automation unit tests', function () {

@@ -21,13 +21,13 @@
                 "tdd",
                 "**/test/*.test.ts",
                 "-g",
-                "hreshold met"
+                "Test:"
             ],
             "env": {
                 "TS_NODE_PROJECT": "src/tsconfig.json",
-                "CountersCollectionInterval": "10",
-                "DontCleanupTestGeneratedFiles": "true",
-                "DEBUG": "*ount*,*tress*"
+                "CountersCollectionIntervalMs": "10",
+                "DontCleanupTestGeneratedFiles": "false",
+                "DEBUG": ""
             },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",
