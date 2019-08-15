@@ -26,33 +26,15 @@ suite('Charts automation unit tests', function () {
     let testId = 1;
     const dataLength = 10;
     const max = 100;
+    const maxLines = 20;
     const xData = Array.from({ length: dataLength }, (value, i) => i + 1);
-    const lines = [
-        {
-            label: "1st Measure",
-            data: Array.from({ length: dataLength }, () => Math.random() * max)
-        },
-        {
-            label: "2nd Measure",
-            data: Array.from({ length: dataLength }, () => Math.random() * max * 10)
-        },
-        {
-            label: "3rd Measure",
-            data: Array.from({ length: dataLength }, () => Math.random() * max * 100)
-        },
-        {
-            label: "4th Measure",
-            data: Array.from({ length: dataLength }, () => Math.random() * max * 1000)
-        },
-        {
-            label: "5th Measure",
-            data: Array.from({ length: dataLength }, () => Math.random() * max * 10000)
-        },
-        {
-            label: "6th Measure",
-            data: Array.from({ length: dataLength }, () => Math.random() * max * 100000)
-        }
-    ];
+    const lines = Array.from({ length: maxLines }, (value, i) => {
+        const multiplier = Math.pow(10, Math.floor(Math.random() * 8));
+        return {
+            label: `${i + 1}th Measure`,
+            data: Array.from({ length: dataLength }, () => Math.random() * max * multiplier)
+        };
+    });
     // Basic Positive test for canonical use case.
     //
     test(`Positive Test:${testId++}:: ensures chart to file works for canonical case`, function () {
@@ -62,19 +44,19 @@ suite('Charts automation unit tests', function () {
             const file = `${uniqueFilename(os.tmpdir(), chartName)}.${fileType}`;
             trace("chart file to generate:", file);
             debug(`invoking writeChartToFile(${utils_1.jsonDump(xData)}, ${utils_1.jsonDump(lines)}, ${fileType}, ${file})`);
-            const image = yield charts_1.writeChartToFile(xData, lines, fileType, undefined, file, chartName);
+            const image = yield charts_1.writeChartToFile(xData, lines, fileType, 0 /*start time*/, undefined /*xAxisLabel to use default */, file, chartName);
             trace(`test writeChartToFile done`);
             const stats = fs.statSync(file);
             trace(`chart file:${file} generated with size:${stats.size}`);
             assert(image !== undefined && image !== null && image.length > 0);
             assert(fs.statSync(file).size > 0, `${file} should be of non-zero size`);
-            if (!utils_1.getBoolean(process.env.DontDeleteTestFiles)) {
+            if (!utils_1.getBoolean(process.env.DontCleanupTestGeneratedFiles)) {
                 fs.unlink(file, (err) => {
                     if (err) {
                         throw err;
                     }
-                    trace(`chart file: ${file} has been deleted`);
                 });
+                trace(`chart file: ${file} has been deleted`);
             }
             ;
         });

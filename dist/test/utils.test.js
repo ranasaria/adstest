@@ -63,12 +63,12 @@ suite('Utils automation unit tests', function () {
             'expected': utils_1.SuiteType.Integration
         },
         {
-            'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to ${utils_1.SuiteType.Stress} string should result in ${utils_1.SuiteType.Stress}`,
+            'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to 'sTreSS' string should result in ${utils_1.SuiteType.Stress}`,
             'environmentVariableValue': 'sTreSS',
             'expected': utils_1.SuiteType.Stress
         },
         {
-            'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to ${utils_1.SuiteType.Stress} string should result in ${utils_1.SuiteType.Perf}`,
+            'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to 'PErf' string should result in ${utils_1.SuiteType.Perf}`,
             'environmentVariableValue': 'PErf',
             'expected': utils_1.SuiteType.Perf
         },

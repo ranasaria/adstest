@@ -232,14 +232,20 @@ exports.Stress = Stress;
 const stresser = new Stress();
 /**
  * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
-* 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
-* 	of the function being modified.
- * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+ * 	of the function being modified.
+ *
+ * @export
+ * @param {StressOptions}: Stress options for Stress.
+    * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+    * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+    * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+    * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * @param {boolean} [collectCounters=true] - if true we collect counters for this stress run.
+ * @param {number} [rootPidForCounters=process.pid] - if specied we collect counters for all children recursively starting from this pid's parent.
+ * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor}
  */
-function stressify({ runtime, dop, iterations, passThreshold } = {}, collectCounters = true) {
+function stressify({ runtime, dop, iterations, passThreshold } = {}, collectCounters = true, rootPidForCounters = undefined) {
     const debug = require('debug')(`${logPrefix}:stressify`);
     // return the function that does the job of stressifying a test class method with decorator @stressify
     //
@@ -267,7 +273,7 @@ function stressify({ runtime, dop, iterations, passThreshold } = {}, collectCoun
                     if (collectCounters) {
                         yield counters_1.Counters.CollectPerfCounters(() => __awaiter(this, void 0, void 0, function* () {
                             result = yield stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
-                        }), `${target.constructor.name}_${memberName}`);
+                        }), `${target.constructor.name}_${memberName}`, getRootPid(rootPidForCounters));
                     }
                     else {
                         result = yield stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
@@ -284,4 +290,24 @@ function stressify({ runtime, dop, iterations, passThreshold } = {}, collectCoun
     };
 }
 exports.stressify = stressify;
+/**
+ * returns the root pid for which to collect counters. if {@link inputPid} is defined and a valid number then that value is returned else the value
+ * parsed from environment variable PerfPidForCollection is returned. If the environment variable value is also not a valid number then current process pid is returned.
+ *
+ * @param {number} inputPid -
+ * @returns {number}
+ */
+function getRootPid(inputPid) {
+    if (inputPid !== null && !isNaN(inputPid)) {
+        return inputPid;
+    }
+    if (!process.env.PerfPidForCollection) {
+        return process.pid;
+    }
+    const pid = parseInt(process.env.PerfPidForCollection);
+    if (isNaN(pid)) {
+        return process.pid;
+    }
+    return pid;
+}
 //# sourceMappingURL=stress.js.map

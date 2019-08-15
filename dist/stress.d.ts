@@ -75,11 +75,17 @@ export declare class Stress {
 }
 /**
  * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
-* 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
-* 	of the function being modified.
- * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+ * 	of the function being modified.
+ *
+ * @export
+ * @param {StressOptions}: Stress options for Stress.
+    * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+    * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+    * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+    * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * @param {boolean} [collectCounters=true] - if true we collect counters for this stress run.
+ * @param {number} [rootPidForCounters=process.pid] - if specied we collect counters for all children recursively starting from this pid's parent.
+ * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor}
  */
-export declare function stressify({ runtime, dop, iterations, passThreshold }?: StressOptions, collectCounters?: boolean): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;
+export declare function stressify({ runtime, dop, iterations, passThreshold }?: StressOptions, collectCounters?: boolean, rootPidForCounters?: number): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;

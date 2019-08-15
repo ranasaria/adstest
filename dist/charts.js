@@ -23,14 +23,16 @@ const debug = require('debug')(logPrefix);
  *
  *
  * @export
- * @param {any[]} xData - array of labels (the x - coordinates/labels of the points)
+ * @param {number[]} xData - array of labels (the x - coordinates/labels of the points)
  * @param {LineData[]} lines - array of {@link LineData} objects
  * @param {string} [fileType='png'] - supported values are 'png' or 'jpeg'. 'jpg' is considered synonym of 'jpeg'
  * @param {string} file - the file name to write out for the generated chart
  * @returns {Promise<void>}
  */
-function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(ms)', file = null, title = null) {
+function writeChartToFile(xData, lines, fileType = 'png', startTimeStamp = 0, xAxisLabel = 'elapsed(ms)', file = null, title = null) {
     return __awaiter(this, void 0, void 0, function* () {
+        xAxisLabel = `${xAxisLabel}, Start time:${utils_1.toDateTimeString(startTimeStamp)}`;
+        xData = xData.map(x => x - xData[0]);
         const configuration = {
             // See https://www.chartjs.org/docs/latest/configuration        
             type: 'line',
@@ -75,14 +77,7 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
         };
         debug("lines:", utils_1.jsonDump(lines));
         debug("empty configuration", utils_1.jsonDump(configuration));
-        const randomColor = require('randomcolor');
-        const rColors = randomColor({
-            luminosity: 'bright',
-            format: 'rgb',
-            count: lines.length,
-            seed: 5
-        });
-        const colors = rColors.map(rc => require('color')(rc));
+        //const colors: Color[] = getColor(lines);
         for (const [index, line] of lines.entries()) {
             debug(`index: ${index}, line: ${utils_1.jsonDump(line)}`);
             let min = Math.min(...line.data);
@@ -90,16 +85,17 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
             let data = line.data;
             let label = line.label;
             if (min == max) {
-                // please it a random location between 0 and 100, but we move it same amount up and down so find a random number between 0 and 50 to adjust min and max by that amount
+                // place it a random location between 0 and 100, since we have horizontal lines and we do not want all lines to overlap
                 const randomShift = Math.ceil(Math.random() * 50);
                 label = `${line.label}:${randomShift.toPrecision(3)}%=${min} & zero at:0`;
                 data = line.data.map(y => randomShift);
             }
             else {
+                //convert data values to percentages
                 label = `${line.label}:1%=${((max - min) / 100).toPrecision(3)} & zero at:${min.toPrecision(3)}`;
                 data = line.data.map(y => (y - min) * 100 / (max - min));
             }
-            const color = colors[index];
+            const color = getColor(index);
             configuration.data.datasets.push({
                 fill: false,
                 borderColor: `${color}`,
@@ -108,7 +104,7 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
                 pointRadius: 6,
                 pointBackgroundColor: '#fff',
                 label: label,
-                data: data,
+                data: data.map((value, index) => { return { x: xData[index], y: value }; })
             });
         }
         debug("filled out configuration", utils_1.jsonDump(configuration));
@@ -139,6 +135,19 @@ function writeChartToFile(xData, lines, fileType = 'png', xAxisLabel = 'elapsed(
     });
 }
 exports.writeChartToFile = writeChartToFile;
+const pallette = ['darkorange', 'deeppink', 'forestgreen', 'brown', 'blue', 'darkgreen', 'goldenrod', 'darkcyan', 'red', 'darkmagenta', 'black', 'hotpink'];
+function getColor(index) {
+    const color = require('color');
+    if (index < pallette.length) {
+        return color(pallette[index]);
+    }
+    else {
+        const randomColor = require('randomcolor');
+        return color(randomColor({
+            format: 'rgb',
+        }));
+    }
+}
 function getMimeType(fileType) {
     switch (fileType.toLowerCase()) {
         case 'jpeg':

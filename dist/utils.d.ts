@@ -40,7 +40,7 @@ export declare function toCapitalizedCase(inputString: string): string;
 /**
  * returns a number that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or NaN or undefined or 'empty' string.
  * else returns the {@link value} input parameter
- * There are cases where the transpile js code from typescript code will allow the strings to be passed through and hence the last check for empty string.
+ * There are cases where the transpiled javascript code from typescript code will allow the strings to be passed through and hence the last check for empty string.
  * @param value - the input value to check for being null, undefined, NaN or empty. If it is not any of those then {@link value} is returned else {@link defaultValue} is returned.
  * @param defaultValue - the value to return if the input is null, undefined, NaN or empty.
  */
@@ -113,3 +113,11 @@ export declare function getCounters(processesToTrack: ProcessInfo[]): Promise<Pr
  * @param length - specifies the length of the random string generated.
  */
 export declare function randomString(length?: number): string;
+/**
+ * returns a date time string corresponding the input parameter {@link msSinceEpoch}
+ *
+ * @export
+ * @param {*} msSinceEpoch - provides the input time in terms of milliseconds since Unix epoch time which is 00:00:00 UTC on 1 January 1970
+ * @returns a string representation of the input timestamp
+ */
+export declare function toDateTimeString(msSinceEpoch?: number): string;

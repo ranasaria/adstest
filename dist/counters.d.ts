@@ -1,8 +1,11 @@
-import { CountersOptions } from './counters';
 import { ProcessInfo } from './utils';
 /**
  * A data structure to hold all the computed statistics for a test runs.
  * These are the various computed metrics for the test that we spit out.
+ * The structure of this object mimics the fields of the data structure that needs to pushed to performance
+ * frameworks so that we can baseline our results and hold the baseline from run to run. These baseline and tracking
+ * variations from baseline is all done by the performance frameworks so long as we generate the information in this format
+ * and publish it to those frameworks.
  * @export
  * @interface ComputedStatistics
  */
@@ -51,14 +54,14 @@ export interface ProcessStatistics {
 export declare const ProcessStatisticsUnits: any;
 /**
  * Defines an interface to specify the counters options for counters tests.
- * @param collectionInterval - the number of milliseconds after which the counters are collected. Default value is provided by environment variable: CountersCollectionInterval and if undefined then by {@link DefaultCountersOptions}.
+ * @param collectionIntervalMs - the number of milliseconds after which the counters are collected. Default value is provided by environment variable: CountersCollectionIntervalMs and if undefined then by {@link DefaultCountersOptions}.
  * @param includeMovingAverages - flag if we should compute movingAverages. Default value is provided by environment variable: CountersIncludeMovingAverages and if undefined then by {@link DefaultCountersOptions}.
  * @param dumpToFile - flag if counters should be dumped to file. Default value is provided by environment variable: CountersDumpToFile and if undefined then by {@link DefaultCountersOptions}.
  * @param dumpToChart - flag if counters should be dumped to charts. Default value is provided by environment variable: CountersDumpToChart and if undefined then by {@link DefaultCountersOptions}.
  * @param outputDirectory - provides path to outputDirectory where output files are written. Default value is provided by environment variable: CountersOutputDirectory and if undefined then by {@link DefaultCountersOptions}.
  */
 export interface CountersOptions {
-    collectionInterval?: number;
+    collectionIntervalMs?: number;
     includeParent?: boolean;
     includeMovingAverages?: boolean;
     dumpToFile?: boolean;
@@ -73,9 +76,10 @@ export declare const DefaultCountersOptions: CountersOptions;
  * A class with methods that help to implement the counters collection for a test method.
  */
 export declare class Counters {
-    static readonly MaxCollectionInterval: number;
-    static readonly ProcessInfoUpdationInterval: number;
+    static readonly MaxCollectionIntervalMs: number;
+    static readonly ProcessInfoUpdateIntervalMs: number;
     static readonly TotalsProcessInfo: ProcessInfo;
+    static readonly WholeComputerProcessInfo: ProcessInfo;
     /**
      * the root pid of processes that we are tracking
      *
@@ -89,7 +93,7 @@ export declare class Counters {
      * @type {number}
      * @memberof Counters
      */
-    readonly collectionInterval: number;
+    readonly collectionIntervalMs: number;
     /**
      * whether we should include parent of the pid in the process that we are tracking. Including parent implies
      * we track all of the parent's children and not just the process designated by {@link pid}
@@ -134,7 +138,7 @@ export declare class Counters {
      * @memberof Counters
      */
     collection: Map<number, ProcessStatisticsCollection>;
-    /**yarn
+    /**
      * the simple moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
      *
      * @type {Map<number,ProcessStatisticsCollection>}
@@ -163,13 +167,13 @@ export declare class Counters {
       * @param pid -  the root pid of processes that we are tracking
       * @param includeParent - flag to indicate if we should include parent of the pid in the process that we are tracking. Including parent implies we track all of the parent's children and not just the process designated by {@link pid}
       * @param object of @type {CountersOptions} with:
-            * @param collectionInterval - see {@link CountersOptions}.
+            * @param collectionIntervalMs - see {@link CountersOptions}.
             * @param includeMovingAverages - see {@link CountersOptions}.
             * @param dumpToFile - see {@link CountersOptions}.
             * @param dumpToChart - see {@link CountersOptions}.
             * @param outputDirectory - see {@link CountersOptions}.
       */
-    constructor(name: string, pid?: number, includeParent?: boolean, { collectionInterval: collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }?: CountersOptions);
+    constructor(name: string, pid?: number, includeParent?: boolean, { collectionIntervalMs: collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }?: CountersOptions);
     /**
      * This method starts the data collection. It stops any previous ongoing collection on this object before starting this one. See {@link stop} for more details on what the stop method does.
      */
@@ -181,11 +185,11 @@ export declare class Counters {
      * If {@link dumpToChart} was set then it dumps out charts corresponding to the data collected.
      */
     stop(): Promise<void>;
-    private writeProcessesInfos;
     private writeCharts;
     private writeChart;
     private writeCollectionData;
-    private getFileNamePrefix;
+    private getOutputFileNameForProcess;
+    private getOutputFileName;
     /**
      * This method resets this object. It stops any ongoing collection as well as clears any collected data.
      */
@@ -193,9 +197,9 @@ export declare class Counters {
     private processesToTrack;
     private processesToTrackTimer;
     private countersTimer;
-    private processesToTrackUpdationPromise;
+    private processesToTrackUpdatePromise;
     private countersCollectionPromise;
-    private processesToTrackUpdationInProgress;
+    private processesToTrackUpdateInProgress;
     private countersCollectionInProgress;
     private stopPopulatingProcessInfos;
     private stopCollecting;
@@ -218,11 +222,11 @@ export declare class Counters {
      * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
      * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process.
      * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
-     * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+     * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
      * @returns {Promise<void>} - returns a promise.
      * @memberof Counters
      */
-    static CollectPerfCounters(closureForCollection: () => void, name: string, pid?: number, includeParent?: boolean, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }?: CountersOptions): Promise<void>;
+    static CollectPerfCounters(closureForCollection: () => void, name: string, pid?: number, includeParent?: boolean, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }?: CountersOptions): Promise<void>;
 }
 /**
  * Decorator Factory to return a decorator function that will collect performance counters for any object instance's 'async' method.
@@ -233,7 +237,7 @@ export declare class Counters {
  * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
  * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process.
  * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
- * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+ * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
  * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor} - returns the decorator method that is modified version of the method being decorated.
  */
-export declare function collectPerfCounters(name: string, pid?: number, includeParent?: boolean, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }?: CountersOptions): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;
+export declare function collectPerfCounters(name: string, pid?: number, includeParent?: boolean, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }?: CountersOptions): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor;

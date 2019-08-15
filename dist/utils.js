@@ -105,7 +105,7 @@ exports.toCapitalizedCase = toCapitalizedCase;
 /**
  * returns a number that is the {@link defaultValue} provided if the {@link value} input parameter is either null, or NaN or undefined or 'empty' string.
  * else returns the {@link value} input parameter
- * There are cases where the transpile js code from typescript code will allow the strings to be passed through and hence the last check for empty string.
+ * There are cases where the transpiled javascript code from typescript code will allow the strings to be passed through and hence the last check for empty string.
  * @param value - the input value to check for being null, undefined, NaN or empty. If it is not any of those then {@link value} is returned else {@link defaultValue} is returned.
  * @param defaultValue - the value to return if the input is null, undefined, NaN or empty.
  */
@@ -274,4 +274,25 @@ function randomString(length = 8) {
     return [...Array(length)].map(i => (~~(Math.random() * 36)).toString(36)).join('');
 }
 exports.randomString = randomString;
+/**
+ * returns a date time string corresponding the input parameter {@link msSinceEpoch}
+ *
+ * @export
+ * @param {*} msSinceEpoch - provides the input time in terms of milliseconds since Unix epoch time which is 00:00:00 UTC on 1 January 1970
+ * @returns a string representation of the input timestamp
+ */
+function toDateTimeString(msSinceEpoch = 0) {
+    const a = new Date(msSinceEpoch);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const year = a.getFullYear();
+    const month = months[a.getMonth()];
+    const date = a.getDate();
+    const hour = a.getHours();
+    const min = a.getMinutes();
+    const sec = a.getSeconds();
+    const msec = a.getMilliseconds();
+    const time = `${date}-${month}-${year} ${hour}:${min}:${sec}.${("00" + msec).substr(-3)}`;
+    return time;
+}
+exports.toDateTimeString = toDateTimeString;
 //# sourceMappingURL=utils.js.map

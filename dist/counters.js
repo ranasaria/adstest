@@ -36,8 +36,9 @@ const pidusage = require("pidusage");
 const assert = require("assert");
 const moving_averages_1 = require("moving-averages");
 const simple_statistics_1 = require("simple-statistics");
-const writeFileAsync = util_1.promisify(fs.writeFile);
+const writeFileWithPromise = util_1.promisify(fs.writeFile);
 const logPrefix = 'adstest:counters';
+const debug = require('debug')(`${logPrefix}`);
 exports.ProcessStatisticsUnits = {
     cpu: '%',
     memory: 'bytes',
@@ -48,7 +49,7 @@ exports.ProcessStatisticsUnits = {
 /**
  * The default values for CountersOptions.
  */
-exports.DefaultCountersOptions = { collectionInterval: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${process.env.TEMP}` };
+exports.DefaultCountersOptions = { collectionIntervalMs: 200, includeMovingAverages: true, dumpToFile: true, dumpToChart: true, outputDirectory: `${os.tmpdir()}` };
 /**
  * A class with methods that help to implement the counters collection for a test method.
  */
@@ -61,13 +62,13 @@ class Counters {
       * @param pid -  the root pid of processes that we are tracking
       * @param includeParent - flag to indicate if we should include parent of the pid in the process that we are tracking. Including parent implies we track all of the parent's children and not just the process designated by {@link pid}
       * @param object of @type {CountersOptions} with:
-            * @param collectionInterval - see {@link CountersOptions}.
+            * @param collectionIntervalMs - see {@link CountersOptions}.
             * @param includeMovingAverages - see {@link CountersOptions}.
             * @param dumpToFile - see {@link CountersOptions}.
             * @param dumpToChart - see {@link CountersOptions}.
             * @param outputDirectory - see {@link CountersOptions}.
       */
-    constructor(name, pid = process.pid, includeParent = true, { collectionInterval: collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
+    constructor(name, pid = process.pid, includeParent = true, { collectionIntervalMs: collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
         /**
          * the collection of counters for this object corresponding to {@link pid}, and {@link includeParent}
          *
@@ -75,7 +76,7 @@ class Counters {
          * @memberof Counters
          */
         this.collection = new Map();
-        /**yarn
+        /**
          * the simple moving average over 4 elements of {@link collection} of counters for this object corresponding to {@link pid}, and {@link includeParent}
          *
          * @type {Map<number,ProcessStatisticsCollection>}
@@ -96,16 +97,16 @@ class Counters {
         // timer for collecting the statistics of the  processes that we are tracking.
         this.countersTimer = null;
         // Promise for updating processesToTrack in case the process at the root of {@link pid} has changed.
-        this.processesToTrackUpdationPromise = null;
+        this.processesToTrackUpdatePromise = null;
         // Promise for collecting the statistics of the  processes that we are tracking.
         this.countersCollectionPromise = null;
         // flag for updating processesToTrack in case the process at the root of {@link pid} has changed.
-        this.processesToTrackUpdationInProgress = false;
+        this.processesToTrackUpdateInProgress = false;
         // flag for collecting the statistics of the  processes that we are tracking.
         this.countersCollectionInProgress = false;
         const trace = require('debug')(`${logPrefix}:constructor:trace`);
         trace(`parameters: name=${name}`);
-        trace(`parameters: collectionInterval=${collectionInterval}`);
+        trace(`parameters: collectionIntervalMs=${collectionIntervalMs}`);
         trace("parameters: includeMovingAverages:", includeMovingAverages);
         trace("parameters: dumpToFile:", dumpToFile);
         trace("parameters: dumpToChart:", dumpToChart);
@@ -113,7 +114,7 @@ class Counters {
         this.name = name;
         this.pid = pid;
         this.includeParent = includeParent;
-        this.collectionInterval = Counters.getCollectionInterval(collectionInterval);
+        this.collectionIntervalMs = Counters.getCollectionInterval(collectionIntervalMs);
         this.includeMovingAverages = Counters.getIncludeMovingAverages(includeMovingAverages);
         this.dumpToFile = Counters.getDumpToFile(dumpToFile);
         this.dumpToChart = Counters.getDumpToChart(dumpToChart);
@@ -125,7 +126,7 @@ class Counters {
             trace(`throwing validationErrors::${utils_1.jsonDump(validationErrors)}`);
             throw validationErrors;
         }
-        trace(`default properties this object after construction: this.name=${this.name}, this.pid=${this.pid}, this.includeParent=${this.includeParent}, this.collectionInterval=${this.collectionInterval}, this.includeMovingAverages=${this.includeMovingAverages}, this.dumpToFile=${this.dumpToFile}, this.dumpToChart=${this.dumpToChart}, this.outputDirectory=${this.outputDirectory}`);
+        trace(`default properties this object after construction: this.name=${this.name}, this.pid=${this.pid}, this.includeParent=${this.includeParent}, this.collectionIntervalMs=${this.collectionIntervalMs}, this.includeMovingAverages=${this.includeMovingAverages}, this.dumpToFile=${this.dumpToFile}, this.dumpToChart=${this.dumpToChart}, this.outputDirectory=${this.outputDirectory}`);
     }
     /**
      * This method starts the data collection. It stops any previous ongoing collection on this object before starting this one. See {@link stop} for more details on what the stop method does.
@@ -135,7 +136,7 @@ class Counters {
             //stop collection first in case it is already in progress. This is inferred by in progress(defined) timers
             //
             if (this.countersTimer || this.processesToTrackTimer) {
-                this.stop();
+                yield this.stop();
             }
             yield this.startPopulatingProcessInfos();
             yield this.startCollecting();
@@ -153,14 +154,18 @@ class Counters {
             yield this.stopCollecting();
             pidusage.clear();
             const promises = [];
+            yield this.computeTotals();
             if (this.includeMovingAverages) {
                 yield this.computeMovingAverages();
             }
-            yield this.computeTotals();
+            // We now write out a bunch of files. These are for the data collected, the process information for which we collected
+            // the data, the moving averages of the data, the statistical computations (ComputedStatistics) on the data, 
+            // the charts for all data and the moving averages. Since these are all quite independent tasks all based off the data that we collected
+            // and since all are being written to separate files we start them all in parallel and then wait for all of them to complete.
             promises.push(this.computeAndWriteStatistics());
             if (this.dumpToFile) {
                 promises.push(this.writeCollectionData());
-                promises.push(this.writeProcessesInfos());
+                promises.push(writeFileWithPromise(`${this.getOutputFileNameForProcess()}_processInfo.json`, utils_1.jsonDump(this.processesToTrack)));
             }
             if (this.dumpToChart) {
                 promises.push(this.writeCharts());
@@ -168,35 +173,25 @@ class Counters {
             yield Promise.all(promises);
         });
     }
-    writeProcessesInfos() {
-        return __awaiter(this, void 0, void 0, function* () {
-            let promises = [];
-            this.processesToTrack.forEach((proc) => {
-                let file = `${this.getFileNamePrefix(proc)}_processInfo.json`;
-                promises.push(writeFileAsync(file, utils_1.jsonDump(proc)));
-            });
-            yield Promise.all(promises);
-        });
-    }
     writeCharts() {
         return __awaiter(this, void 0, void 0, function* () {
             const trace = require('debug')(`${logPrefix}:writeCharts:trace`);
             let promises = [];
-            [Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
-                let file = `${this.getFileNamePrefix(proc)}_chart.png`;
+            [Counters.WholeComputerProcessInfo, Counters.TotalsProcessInfo, ...this.processesToTrack].forEach((proc) => {
+                let file = `${this.getOutputFileNameForProcess(proc)}_chart.png`;
                 trace(`chart file name: ${file}`);
                 if (this.collection[proc.pid]) {
                     // if we have collected data for this process then write Chart for it.
                     promises.push(this.writeChart(file, this.collection[proc.pid]));
                 }
                 if (this.includeMovingAverages) {
-                    file = `${this.getFileNamePrefix(proc)}_sma_chart.png`;
+                    file = `${this.getOutputFileNameForProcess(proc)}_sma_chart.png`;
                     trace(`sma chart file name: ${file}`);
                     if (this.smaOver4Collection[proc.pid]) {
                         // if we have simple moving average data computed for this process then  write Chart for it.
                         promises.push(this.writeChart(file, this.smaOver4Collection[proc.pid]));
                     }
-                    file = `${this.getFileNamePrefix(proc)}_ema_chart.png`;
+                    file = `${this.getOutputFileNameForProcess(proc)}_ema_chart.png`;
                     trace(`ema chart file name: ${file}`);
                     if (this.emaOver4Collection[proc.pid]) {
                         // if we have exponential moving average data computed for this process then  write Chart for it.	
@@ -212,13 +207,13 @@ class Counters {
         return __awaiter(this, void 0, void 0, function* () {
             const trace = require('debug')(`${logPrefix}:writeChart:trace`);
             trace(`processStats=${utils_1.jsonDump(processCollection)}`);
-            const xKey = 'elapsed';
+            const xKey = 'timestamp';
             const xData = processCollection[xKey];
             const xAxisLabel = `${xKey}(${exports.ProcessStatisticsUnits[xKey]})`;
             const lines = [];
             const title = path.parse(file).name; //get just file name without directory paths and extension
             Object.keys(processCollection)
-                .filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'timestamp' && key !== 'pid' && key !== 'ppid')
+                .filter(key => key !== 'elapsed' && key !== 'timestamp' && key !== 'pid' && key !== 'ppid')
                 .forEach(key => {
                 lines.push({
                     label: `${key}(${exports.ProcessStatisticsUnits[key]})`,
@@ -226,31 +221,34 @@ class Counters {
                 });
             });
             trace(`xData:${utils_1.jsonDump(xData)}, lines:${utils_1.jsonDump(lines)}, xAxisLabel: ${xAxisLabel}, file:${file}, title:${title}`);
-            yield charts_1.writeChartToFile(xData, lines, 'png', xAxisLabel, file, title);
+            yield charts_1.writeChartToFile(xData, lines, 'png', processCollection.timestamp[0], xAxisLabel, file, title);
         });
     }
     writeCollectionData() {
         return __awaiter(this, void 0, void 0, function* () {
+            // data, simple moving average data and exponential moving average data are all written to different files
+            // so we kick them all off and then wait for all of them to complete.
             let promises = [];
-            [Counters.TotalsProcessInfo, ...this.processesToTrack].filter(proc => this.collection[proc.pid]).forEach((proc) => {
-                let file = `${this.getFileNamePrefix(proc)}_data.json`;
-                promises.push(writeFileAsync(file, utils_1.jsonDump(this.collection[proc.pid])));
-                if (this.includeMovingAverages) {
-                    file = `${this.getFileNamePrefix(proc)}_sma_data.json`;
-                    promises.push(writeFileAsync(file, utils_1.jsonDump(this.smaOver4Collection[proc.pid])));
-                    file = `${this.getFileNamePrefix(proc)}_ema_data.json`;
-                    promises.push(writeFileAsync(file, utils_1.jsonDump(this.emaOver4Collection[proc.pid])));
-                }
-            });
+            let file = `${this.getOutputFileName()}_data.json`;
+            promises.push(writeFileWithPromise(file, utils_1.jsonDump(this.collection)));
+            if (this.includeMovingAverages) {
+                file = `${this.getOutputFileName()}_sma_data.json`;
+                promises.push(writeFileWithPromise(file, utils_1.jsonDump(this.smaOver4Collection)));
+                file = `${this.getOutputFileName()}_ema_data.json`;
+                promises.push(writeFileWithPromise(file, utils_1.jsonDump(this.emaOver4Collection)));
+            }
             yield Promise.all(promises);
         });
     }
-    getFileNamePrefix(proc = undefined) {
-        let file = path.join(this.outputDirectory, this.name);
+    getOutputFileNameForProcess(proc = undefined) {
+        let file = this.getOutputFileName();
         if (proc) {
-            file = `${file}__${proc.name}_${proc.pid}`;
+            file = proc.pid > 0 ? `${file}__${proc.name}_${proc.pid}` : `${file}__${proc.name}`;
         }
         return file.replace('.', '_');
+    }
+    getOutputFileName() {
+        return path.join(this.outputDirectory, this.name);
     }
     /**
      * This method resets this object. It stops any ongoing collection as well as clears any collected data.
@@ -270,7 +268,7 @@ class Counters {
                 this.processesToTrackTimer.unref();
                 this.processesToTrackTimer = null;
             }
-            yield this.processesToTrackUpdationPromise;
+            yield this.processesToTrackUpdatePromise;
         });
     }
     stopCollecting() {
@@ -281,70 +279,75 @@ class Counters {
                 this.countersTimer.unref();
                 this.countersTimer = null;
             }
-            yield this.countersCollectionPromise;
         });
     }
     startPopulatingProcessInfos() {
         return __awaiter(this, void 0, void 0, function* () {
             assert(this.processesToTrackTimer === null, `the processesToTrackTimer should be null when we startPopulatingProcessInfos`);
             const getProcessInfos = () => __awaiter(this, void 0, void 0, function* () {
-                this.processesToTrack = yield utils_1.getChildrenTree(this.pid, this.includeParent);
+                // start updating processesToTrack unless previous update is still in progress.
+                if (!this.processesToTrackUpdateInProgress) {
+                    debug(`getting current processInfo for ${this.name}`);
+                    this.processesToTrackUpdateInProgress = true;
+                    this.processesToTrack = yield utils_1.getChildrenTree(this.pid, this.includeParent);
+                    this.processesToTrackUpdateInProgress = false;
+                }
             });
             // kickoff the collection of processes to track and await 
             // them to be collected for the first time so that processesToTrack is initialized
-            this.processesToTrackUpdationPromise = getProcessInfos();
-            yield this.processesToTrackUpdationPromise;
+            this.processesToTrackUpdatePromise = getProcessInfos();
+            yield this.processesToTrackUpdatePromise; //if we do not await here we will start trying to collect the perf counters when we have not yet figured what full set of processes to track, so we await here for all the processes to be tracked to become available.
             // set a timer to keep getting processes to track at regular intervals.
             this.processesToTrackTimer = setInterval(() => {
-                // start updating processesToTrack unless we are already doing one.
-                if (!this.processesToTrackUpdationInProgress) {
-                    this.processesToTrackUpdationInProgress = true;
-                    this.processesToTrackUpdationPromise = getProcessInfos();
-                    this.processesToTrackUpdationInProgress = false;
+                if (!this.processesToTrackUpdateInProgress) {
+                    this.processesToTrackUpdatePromise = getProcessInfos();
                 }
-            }, Counters.ProcessInfoUpdationInterval);
+            }, Counters.ProcessInfoUpdateIntervalMs);
         });
     }
     startCollecting() {
         return __awaiter(this, void 0, void 0, function* () {
             assert(this.countersTimer === null, `the countersTimer should be null when we startCollecting`);
             const collectCounters = () => __awaiter(this, void 0, void 0, function* () {
-                const cs = {
-                    cpu: (osu.cpu.average()).avgTotal,
-                    memory: os.totalmem() - os.freemem(),
-                    ppid: undefined,
-                    pid: 0,
-                    elapsed: os.uptime() * 1000,
-                    timestamp: Date.now()
-                };
-                [cs, ...yield this.getCounters()].forEach(processStatistics => {
-                    const trace = require('debug')(`${logPrefix}:collectCounters:trace`);
-                    Object.keys(processStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
-                        if (!this.collection[processStatistics.pid]) {
-                            this.collection[processStatistics.pid] = {
-                                pid: processStatistics.pid,
-                                ppid: processStatistics.ppid
-                            };
-                        }
-                        if (!this.collection[processStatistics.pid][prop]) {
-                            this.collection[processStatistics.pid][prop] = [];
-                        }
-                        trace(`prop: ${prop}, propColl: ${utils_1.jsonDump(this.collection[processStatistics.pid][prop])}`);
-                        this.collection[processStatistics.pid][prop].push(processStatistics[prop]);
+                const trace = require('debug')(`${logPrefix}:collectCounters:${this.name}:trace`);
+                // start collecting counters unless previous collection set is still in progress.
+                if (!this.countersCollectionInProgress) {
+                    trace(`${Date.now()}:: collecting counters for ${this.name}`);
+                    this.countersCollectionInProgress = true;
+                    const cs = {
+                        cpu: (osu.cpu.average()).avgTotal,
+                        memory: os.totalmem() - os.freemem(),
+                        ppid: Counters.WholeComputerProcessInfo.ppid,
+                        pid: Counters.WholeComputerProcessInfo.pid,
+                        elapsed: os.uptime() * 1000,
+                        timestamp: Date.now()
+                    };
+                    [cs, ...yield this.getCounters()].forEach(processStatistics => {
+                        Object.keys(processStatistics).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
+                            if (!this.collection[processStatistics.pid]) {
+                                this.collection[processStatistics.pid] = {
+                                    pid: processStatistics.pid,
+                                    ppid: processStatistics.ppid
+                                };
+                            }
+                            if (!this.collection[processStatistics.pid][prop]) {
+                                this.collection[processStatistics.pid][prop] = [];
+                            }
+                            this.collection[processStatistics.pid][prop].push(processStatistics[prop]);
+                        });
                     });
-                });
+                    trace(`${Date.now()}:: counters collection done`);
+                    this.countersCollectionInProgress = false;
+                }
             });
             // Kickoff the first collection
             this.countersCollectionPromise = collectCounters();
-            // Set a timer for future collection(s)
+            // Set a timer for future collections
             this.countersTimer = setInterval(() => {
-                // start collecting counters unless we are already collecting one set.
                 if (!this.countersCollectionInProgress) {
-                    this.countersCollectionInProgress = true;
                     this.countersCollectionPromise = collectCounters();
-                    this.countersCollectionInProgress = false;
                 }
-            }, this.collectionInterval);
+            }, this.collectionIntervalMs);
         });
     }
     computeTotals() {
@@ -353,6 +356,8 @@ class Counters {
             // Totals are stored in a record corresponding to {@link Counters.TotalsProcessInfo}
             trace(`collection: ${utils_1.jsonDump(this.collection)}`);
             trace(`collection.keys: ${utils_1.jsonDump(Object.keys(this.collection))}`);
+            trace(`this.collection: ${utils_1.jsonDump(this.collection)}`);
+            trace("this.pid:", this.pid);
             this.collection[Counters.TotalsProcessInfo.pid] = {
                 cpu: [],
                 memory: [],
@@ -362,7 +367,6 @@ class Counters {
                 elapsed: this.collection[this.pid].elapsed,
                 timestamp: this.collection[this.pid].timestamp,
             };
-            trace(`this.collection: ${utils_1.jsonDump(this.collection)}`);
             // compute and store totals for each timestamp value. 
             for (let i in this.collection[Counters.TotalsProcessInfo.pid].timestamp) {
                 let cpu = 0;
@@ -402,13 +406,13 @@ class Counters {
                 primaryMetric: 'MemoryMetric'
             };
             this.computedStatistics = computedStats;
-            const file = `${this.getFileNamePrefix()}_statistics.json`;
-            yield writeFileAsync(file, utils_1.jsonDump(computedStats));
+            const file = `${this.getOutputFileNameForProcess()}_statistics.json`;
+            yield writeFileWithPromise(file, utils_1.jsonDump(computedStats));
         });
     }
     computeMovingAverages() {
         return __awaiter(this, void 0, void 0, function* () {
-            for (let collectionStats of this.collection.values()) {
+            for (let collectionStats of Object.values(this.collection)) {
                 this.smaOver4Collection[collectionStats.pid] = {
                     pid: collectionStats.pid,
                     ppid: collectionStats.ppid
@@ -419,14 +423,14 @@ class Counters {
                 };
                 Object.keys(collectionStats).filter(key => (key !== "pid" && key !== "ppid")).forEach(prop => {
                     if (prop !== "elapsed" && prop !== "timestamp") {
-                        this.smaOver4Collection[collectionStats.pid][prop] = moving_averages_1.ma([...this.collection[collectionStats.pid][prop]], 4);
+                        this.smaOver4Collection[collectionStats.pid][prop] = moving_averages_1.ma([...this.collection[collectionStats.pid][prop]], 4).slice(3); //sma over '4' elements gives out an array of same size as input with first 3 elements values as nulls, so we prune them.
                         this.emaOver4Collection[collectionStats.pid][prop] = moving_averages_1.ema([...this.collection[collectionStats.pid][prop]], 4);
                     }
                     else {
                         //copy from corresponding collection while dropping the first 3 elements.Since moving averages produce values from 4th element
                         //
                         this.smaOver4Collection[collectionStats.pid][prop] = [...this.collection[collectionStats.pid][prop]].slice(3);
-                        this.emaOver4Collection[collectionStats.pid][prop] = this.smaOver4Collection[collectionStats.pid][prop]; //refer to the same array as in sma collection as the contents are always same.
+                        this.emaOver4Collection[collectionStats.pid][prop] = [...this.collection[collectionStats.pid][prop]];
                     }
                 });
             }
@@ -449,7 +453,7 @@ class Counters {
         return utils_1.getBoolean(input, utils_1.getBoolean(process.env.CountersIncludeMovingAverages, exports.DefaultCountersOptions.includeMovingAverages));
     }
     static getCollectionInterval(input) {
-        return utils_1.nullNanUndefinedEmptyCoalesce(input, utils_1.nullNanUndefinedEmptyCoalesce(parseInt(process.env.CountersCollectionInterval), exports.DefaultCountersOptions.collectionInterval));
+        return utils_1.nullNanUndefinedEmptyCoalesce(input, utils_1.nullNanUndefinedEmptyCoalesce(parseInt(process.env.CountersCollectionIntervalMs), exports.DefaultCountersOptions.collectionIntervalMs));
     }
     static getOutputDirectory(input) {
         if (input) {
@@ -468,26 +472,32 @@ class Counters {
      * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
      * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process.
      * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
-     * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+     * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
      * @returns {Promise<void>} - returns a promise.
      * @memberof Counters
      */
-    static CollectPerfCounters(closureForCollection, name, pid = process.pid, includeParent = true, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
+    static CollectPerfCounters(closureForCollection, name, pid = process.pid, includeParent = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
         return __awaiter(this, void 0, void 0, function* () {
-            const countersCollector = new Counters(name, pid, includeParent, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+            const countersCollector = new Counters(name, pid, includeParent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
             yield countersCollector.start();
             yield closureForCollection();
             yield countersCollector.stop();
         });
     }
 }
-Counters.MaxCollectionInterval = 3600 * 1000; // in ms. MaxValue is 1 hour.
-Counters.ProcessInfoUpdationInterval = 10 * 1000; // 10 milliseconds. It takes 2-4 seconds to gather process information typically, so this value should not be lower than 5 seconds.
+Counters.MaxCollectionIntervalMs = 3600 * 1000; // in ms. MaxValue is 1 hour.
+Counters.ProcessInfoUpdateIntervalMs = 10 * 1000; // 10 seconds. It takes 2-4 seconds to gather process information typically, so this value should not be lower than 5 seconds.
 // We designate a pid and ppid of -1 for an artificial ProcessInfo object for keeping track of totals
 Counters.TotalsProcessInfo = {
     pid: -1,
     ppid: -1,
-    name: 'totals'
+    name: 'Totals of all Tracked Processes'
+};
+// We designate a pid and ppid of 0 for an artificial ProcessInfo object for keeping track of statistics collected for the entire machine
+Counters.WholeComputerProcessInfo = {
+    pid: 0,
+    ppid: 0,
+    name: 'Whole Computer'
 };
 __decorate([
     class_validator_1.IsDefined(),
@@ -499,9 +509,9 @@ __decorate([
     class_validator_1.IsDefined(),
     class_validator_1.IsInt(),
     class_validator_1.Min(0),
-    class_validator_1.Max(Counters.MaxCollectionInterval),
+    class_validator_1.Max(Counters.MaxCollectionIntervalMs),
     __metadata("design:type", Number)
-], Counters.prototype, "collectionInterval", void 0);
+], Counters.prototype, "collectionIntervalMs", void 0);
 __decorate([
     class_validator_1.IsNotEmpty(),
     class_validator_1.IsBoolean(),
@@ -543,14 +553,14 @@ exports.Counters = Counters;
  * @param {string} name - the name of this collector. This is the typically a friendly name of the block of code for which we are doing performance collection and is a identifier for files that are generated.
  * @param {number} [pid=process.pid] - the process pid for which we collect performance counters. We collect for the given pid and for all recursive children and grand children for this pid. Default is current process.
  * @param {boolean} [includeParent=true] - if true we collect performance counters for all recursive children and grand children or {@link pid} process' parent. Default is true.
- * @param {CountersOptions} [{ collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
+ * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
  * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor} - returns the decorator method that is modified version of the method being decorated.
  */
-function collectPerfCounters(name, pid = process.pid, includeParent = true, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
+function collectPerfCounters(name, pid = process.pid, includeParent = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory } = {}) {
     const debug = require('debug')(`${logPrefix}:collectPerfCounters`);
     // return the function that does the job of collecting the perf counters on an object instance method with decorator @collectPerfCounters
     //
-    debug(`collectPerfCounters FactoryDecorator called with name=${name}, pid=${pid}, includeParent=${includeParent}, collectionInterval=${collectionInterval}, includeMovingAverages=${includeMovingAverages}, dumpToFile, dumpToChart, outputDirectory `);
+    debug(`collectPerfCounters FactoryDecorator called with name=${name}, pid=${pid}, includeParent=${includeParent}, collectionIntervalMs=${collectionIntervalMs}, includeMovingAverages=${includeMovingAverages}, dumpToFile, dumpToChart, outputDirectory `);
     // The actual decorator function that modifies the original target method pointed to by the memberDescriptor
     //
     return function (target, memberName, memberDescriptor) {
@@ -569,7 +579,7 @@ function collectPerfCounters(name, pid = process.pid, includeParent = true, { co
                 //
                 yield Counters.CollectPerfCounters(() => __awaiter(this, void 0, void 0, function* () {
                     yield originalMethod.apply(this, args);
-                }), name, pid, includeParent, { collectionInterval, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+                }), name, pid, includeParent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
             });
         };
         // return the original descriptor unedited.
