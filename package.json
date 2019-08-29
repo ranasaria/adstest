@@ -49,7 +49,6 @@
     "unique-filename": "^1.1.1"
   },
   "scripts": {
-    "preinstall": "echo npm_config_runtime=$npm_config_runtime",
     "test": "set TS_NODE_PROJECT=src/tsconfig.json&& mocha -r ts-node/register --color --watch-extensions tsx,ts -u tdd **/test/*.test.ts",
     "prepare": "npm run compile",
     "compile": "tsc -p ./src"
