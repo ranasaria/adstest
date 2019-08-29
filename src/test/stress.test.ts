@@ -81,6 +81,15 @@ class StressifyTester {
 	}
 }
 
+function isIterable(obj) {
+	// Check https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Iteration_protocols for details on logic of this check
+	// checks for null and undefined
+	if (obj == null) {
+	  return false;
+	}
+	return typeof obj[Symbol.iterator] === 'function';
+}
+
 before('Stress automation setup', function () {
 	var tmpObj = tmp.dirSync({ mode: 0o777, prefix: 'StressUnitTests_' });
 	process.env.CountersOutputDirectory = tmpObj.name;
@@ -197,7 +206,11 @@ suite('Stress automation unit tests', function () {
 				}
 				catch (errors) {
 					trace(`Exception caught:${errors}::${jsonDump(errors)}, each is being verified to be ValidationError type and is being swallowed`);
-					[...errors].forEach(err => assert(err instanceof ValidationError));
+					if (isIterable(errors)) {
+						[...errors].forEach(err => assert(err instanceof ValidationError));
+					} else {
+						assert(errors instanceof ValidationError);
+					}
 				}
 				finally {
 					process.env[x.environmentVariableName] = origEnvironmentVariableValue;
@@ -241,7 +254,11 @@ suite('Stress automation unit tests', function () {
 				}
 				catch (errors) {
 					trace(`Exception caught:${errors}::${jsonDump(errors)}, each is being verified to be ValidationError type and is being swallowed`);
-					[...errors].forEach(err => assert(err instanceof ValidationError));
+					if (isIterable(errors)) {
+						[...errors].forEach(err => assert(err instanceof ValidationError));
+					} else {
+						assert(errors instanceof ValidationError);
+					}
 				}
 			});
 		});
