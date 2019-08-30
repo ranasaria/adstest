@@ -5,15 +5,17 @@
 /**
  * This module contains all the definitions for Stress decorators and the utility functions and definitions thereof
 */
+'use strict';
 import { Min, Max, IsInt, validateSync, ValidationError, IsDefined } from 'class-validator';
 import { AssertionError } from 'assert';
-import { getSuiteType, SuiteType, bear, jsonDump } from './utils';
+import { getSuiteType, SuiteType, bear, jsonDump, nullNanUndefinedEmptyCoalesce } from './utils';
+import { Counters } from './counters';
 import assert = require('assert');
 import { isString } from 'util';
 
 const logPrefix = 'adstest:stress';
-const debug = require('debug')(logPrefix);
 const trace = require('debug')(`${logPrefix}:trace`);
+
 /**
  * Subclass of Error to wrap any Error objects caught during Stress Execution.
  */
@@ -79,7 +81,7 @@ export interface StressResult {
 
 /**
  * A class with methods that help to implement the stressify decorator.
- * Keeping the core logic of stressification in one place as well as allowing this code to use
+ * Keeping the core logic of `stressification` in one place as well as allowing this code to use
  * other decorators if needed.
  */
 export class Stress {
@@ -108,21 +110,23 @@ export class Stress {
 	@Max(Stress.MaxDop)
 	readonly dop?: number;
 
-	// Threshold for fractional number of individual test passes fo total executed to declare the stress test passed. This is a fraction between 0 and Stress.MaxPassThreshold.
+	// Threshold for fractional number of individual test passes to total executed to declare the stress test passed. This is a fraction between 0 and Stress.MaxPassThreshold.
 	@IsDefined()
 	@Min(0)
 	@Max(Stress.MaxPassThreshold)
 	readonly passThreshold?: number;
 
+	
 	/**
 	 * Constructor allows for construction with a bunch of optional parameters
 	 *
-	 * @param runtime - see {@link StressOptionsType}.
-	 * @param dop - see {@link StressOptionsType}.
-	 * @param iterations - see {@link StressOptionsType}.
-	 * @param passThreshold - see {@link StressOptionsType}.
+	 * @param runtime - see {@link StressOptions}.
+	 * @param dop - see {@link StressOptions}.
+	 * @param iterations - see {@link StressOptions}.
+	 * @param passThreshold - see {@link StressOptions}.
 	 */
 	constructor({ runtime, dop, iterations, passThreshold }: StressOptions = {}) {
+		const debug = require('debug')(`${logPrefix}:constructor`);
 		const trace = require('debug')(`${logPrefix}:constructor:trace`);
 		trace(`parameters: runtime=${runtime}, dop=${dop}, iterations=${iterations}, passThreshold=${passThreshold}`);
 		trace(`default properties this object at beginning of constructor: this.runtime=${this.runtime}, this.dop=${this.dop}, this.iterations=${this.iterations}, this.passThreshold=${this.passThreshold}`);
@@ -135,7 +139,7 @@ export class Stress {
 		//
 		let validationErrors: ValidationError[] =  validateSync(this);
 		if (validationErrors.length > 0) {
-			trace(`throwing validationErrors::${jsonDump(validationErrors)}`);			
+			debug(`throwing validationErrors::${jsonDump(validationErrors)}`);			
 			throw validationErrors;
 		}
 
@@ -175,7 +179,7 @@ export class Stress {
 	 *
 	 * @returns - {@link StressResult}.
 	 */
-	async run(
+	 async run(
 		originalMethod: Function,
 		originalObject: any,
 		functionName: string,
@@ -201,7 +205,7 @@ export class Stress {
 		// Setup a timer to set timedOut to true when this.runtime number of seconds have elapsed.
 		//
 		trace(`Setting up a timer to expire after runtime of ${runtime * 1000} milliseconds`);
-		setTimeout(() => {
+		let timer: NodeJS.Timer = setTimeout(() => {
 			timedOut = true;
 			trace(`flagging time out. ${runtime} seconds are up`);
 		}, runtime * 1000);
@@ -217,6 +221,8 @@ export class Stress {
 					bear(); // bear (yield) to other threads so that timeout timer gets a chance to fire.
 					if (timedOut) {
 						debug(`timed out after ${i}th iteration, timeout of ${runtime} has expired `);
+						clearTimeout(timer);
+						timer.unref();
 						break; // break out of the loop
 					}
 				}
@@ -256,51 +262,86 @@ export class Stress {
 const stresser = new Stress();
 
 /**
- * Decorator Factory to return the Method Descriptor function that will stressify any test class method.
-		* Using the descriptor factory allows us pass options to the discriptor itself separately from the arguments
-		* of the function being modified.
- * @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
- * @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
+ * 	Using the decorator factory allows us pass options to the decorator itself separately from the arguments
+ * 	of the function being modified.
+ *
+ * @export
+ * @param {StressOptions}: Stress options for Stress.
+  	* @param runtime - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+	* @param dop - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+	* @param iterations - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+	* @param passThreshold - The desconstructed {@link StressOptions} option. see {@link StressOptions} for details.
+ * @param {boolean} [collectCounters=true] - if true we collect counters for this stress run.
+ * @param {number} [rootPidForCounters=process.pid] - if specied we collect counters for all children recursively starting from this pid's parent.
+ * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor}
  */
-export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}): (memberClass: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+export function stressify({ runtime, dop, iterations, passThreshold }: StressOptions = {}, collectCounters: boolean = true, rootPidForCounters: number = undefined): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+	const debug = require('debug')(`${logPrefix}:stressify`);
 	// return the function that does the job of stressifying a test class method with decorator @stressify
 	//
 	debug(`stressify FactoryDecorator called with runtime=${runtime}, dop=${dop}, iter=${iterations}, passThreshold=${passThreshold}`);
 
-	// The actual decorator function that modifies the original target method pointed to by the memberDiscriptor
+	// The actual decorator function that modifies the original target method pointed to by the memberDescriptor
 	//
-	return function (memberClass: any, memberName: string, memberDescriptor: PropertyDescriptor): PropertyDescriptor {
-		// stressify the target function pointed to by the descriptor.value only if SuiteType is stress
+	return function (target: any, memberName: string, memberDescriptor: PropertyDescriptor): PropertyDescriptor {
+		// stressify the 'memberName' function on the 'target' object pointed to by the memberDescriptor.value only if SuiteType is stress
 		//
 		const suiteType = getSuiteType();
 		debug(`Stressified Decorator called for: ${memberName} and suiteType=${suiteType}`);
 		if (suiteType === SuiteType.Stress) {
-			debug(`Stressifying ${memberName} since env variable SuiteType is set to ${SuiteType.Stress}`);
+			debug(`Stressifying method:"${memberName}" of class:${jsonDump(target.constructor.name)} since env variable SuiteType is set to ${SuiteType.Stress}`);
 			// save a reference to the original method, this way we keep the values currently in the descriptor and not overwrite what another
 			// decorator might have done to this descriptor by return the original descriptor.
 			//
 			const originalMethod: Function = memberDescriptor.value;
-			//modifying the descriptor's value parameter to point to a new method which is the stressified version of the originalMethod
+			//modifying the descriptor's value parameter to point to a new method which is the `stressified` version of the originalMethod
 			//
 			memberDescriptor.value = async function (...args: any[]): Promise<StressResult> {
 				// note usage of originalMethod here
 				//
-				const result: StressResult = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+				let result: StressResult;
+				if (collectCounters) {
+					await Counters.CollectPerfCounters(async () => {
+						result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+						}, 
+						`${target.constructor.name}_${memberName}`,
+						getRootPid(rootPidForCounters)
+					);
+				} else {
+					result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+				}
+
 				debug(`Stressified: ${memberName}(${args.join(',')}) returned: ${jsonDump(result)}`);
 				return result;
 			};
 		}
 
-		// return the original discriptor unedited so that the method pointed to it remains the same as before
-		// the method pointed to by this descriptor was modifed to a stressified version of the origMethod if SuiteType was Stress.
+		// return the original descriptor unedited.
+		// the method pointed to by this descriptor was modified to a stressified version of the originalMethod if SuiteType was Stress.
 		//
 		return memberDescriptor;
 	};
 }
 
-function nullNanUndefinedEmptyCoalesce(value: number, defaultValue: number): number {
-	// trace(`value is: ###{${value}}###, defaultValue is: ###{${defaultValue}}### `);
-	return (value === null || value === undefined || isNaN(value) || value.toString() === '' ) ? defaultValue : value;
+/**
+ * returns the root pid for which to collect counters. if {@link inputPid} is defined and a valid number then that value is returned else the value
+ * parsed from environment variable PerfPidForCollection is returned. If the environment variable value is also not a valid number then current process pid is returned.
+ *
+ * @param {number} inputPid - 
+ * @returns {number}
+ */
+function getRootPid (inputPid: number): number {
+	if (inputPid !== null &&  !isNaN(inputPid)) {
+		return inputPid;
+	}
+
+	if (!process.env.PerfPidForCollection) {
+		return process.pid;
+	}
+	const pid:number = parseInt(process.env.PerfPidForCollection);
+	if (isNaN(pid)) {
+		return process.pid;
+	}
+	return pid;
 }

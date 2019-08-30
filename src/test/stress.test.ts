@@ -7,27 +7,14 @@
 import { ValidationError } from 'class-validator';
 import 'mocha';
 import { DefaultStressOptions, Stress, stressify, StressOptions, StressResult } from '../stress';
-import { bear, getSuiteType, sleep, SuiteType, jsonDump } from '../utils';
+import { bear, sleep, jsonDump, runOnCodeLoad, getBoolean } from '../utils';
 import assert = require('assert');
 import { AssertionError } from 'assert';
+import tmp = require('tmp');
+import fse = require('fs-extra');
 
 const debug = require('debug')('unittest:stress');
 const trace = require('debug')('unittest:stress:trace');
-
-/**
- * decorator function to run some code at decorator load time before other code is evaluated. Invoke the {@link func} method with given {@link args}
- * 		and then return a decorator function that does not modify the method for which it is called.
- * @param func - the {@link Function} to be invoked at load time.
- * @param args - the argument array to be passed as parameters to the {@link func}.
- */
-function runOnCodeLoad(func: Function, ...args): (memberClass: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
-	func.apply(this, args);
-	return function (memberClass: any, memberName: string, memberDescriptor: PropertyDescriptor): PropertyDescriptor {
-		trace(`Decorator runOnCodeLoad called for function: ${memberName}, on object: ${jsonDump(this)} with args: (${args.join(',')})`);
-		return memberDescriptor;
-	};
-}
-
 
 interface StressParamType {
 	environmentVariableName: string,
@@ -39,8 +26,8 @@ interface StressParamType {
 };
 
 class StressifyTester {
-	static dop: number = 5;
-	static iter: number = 6;
+	static dop: number = 10;
+	static iter: number = 1000;
 	static runtime: number = 0.05; //seconds
 
 	t: number = 0;
@@ -51,33 +38,6 @@ class StressifyTester {
 	setenvironmentVariableiableSuiteType(suiteType: string): void {
 		process.env.SuiteType = suiteType;
 		debug(`environment variable SuiteType set to ${process.env.SuiteType}`);
-	}
-
-	static randomString(length: number = 8): string {
-		// ~~ is double bitwise not operator which is a faster substitute for Math.floor() for positive numbers.
-		//	Techinically ~~ just removes everything to the right of decimal point.
-		//
-		return [...Array(length)].map(i => (~~(Math.random() * 36)).toString(36)).join('');
-	}
-
-	environmentVariableSuiteTypeTest(x: { 'environmentVariableValue': string, 'expected': SuiteType }): void {
-		let environmentVariable = 'SuiteType';
-		let origSuiteType: string = process.env[environmentVariable];
-		try {
-			if (x.environmentVariableValue === 'deleted') {
-				delete process.env[environmentVariable];
-				trace(`deleting env[${environmentVariable}]`);
-			} else {
-				process.env[environmentVariable] = x.environmentVariableValue;
-				trace(`setting process.env[${environmentVariable}] to: ${x.environmentVariableValue}`);
-			}
-			const suiteType = getSuiteType();
-			trace(`suiteType evaluated to: ${suiteType} by getSuiteType() function`);
-			assert.equal(suiteType, x.expected);
-		}
-		finally {
-			process.env.SuiteType = origSuiteType;
-		}
 	}
 
 	@stressify({ dop: StressifyTester.dop, iterations: StressifyTester.iter, passThreshold: 1 })
@@ -96,6 +56,11 @@ class StressifyTester {
 		await this.failedErroredExecutions();
 	}
 
+	@stressify({ dop: StressifyTester.dop, iterations: StressifyTester.iter, passThreshold: 0.5 })
+	async passThresholdMet(): Promise<any> {
+		await this.failedErroredExecutions();
+	}
+
 	private async failedErroredExecutions() {
 		this.t++;
 		if (this.t % 7 === 0) { //for every 7th invocation
@@ -109,53 +74,58 @@ class StressifyTester {
 		await sleep(2); // sleep for 2 ms without spinning
 	}
 
-	@stressify({ dop: StressifyTester.dop, iterations: StressifyTester.iter, passThreshold: 0.5 })
-	async passThresholdMet(): Promise<any> {
-		await this.failedErroredExecutions();
-	}
-
-	@stressify({ runtime: StressifyTester.runtime, dop: StressifyTester.dop, iterations: Stress.MaxIterations, passThreshold: 1 })
+	@stressify({ runtime: StressifyTester.runtime, dop: StressifyTester.dop, iterations: Stress.MaxIterations, passThreshold: 1 }, false /* collectCounters */)
 	async timeOutTest(): Promise<any> {
 		await bear();	// yield to other operations.
 		this.t++;
 	}
 }
 
+function isIterable(obj) {
+	// Check https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Iteration_protocols for details on logic of this check
+	// checks for null and undefined
+	if (obj == null) {
+	  return false;
+	}
+	return typeof obj[Symbol.iterator] === 'function';
+}
+
+before('Stress automation setup', function () {
+	var tmpObj = tmp.dirSync({ mode: 0o777, prefix: 'StressUnitTests_' });
+	process.env.CountersOutputDirectory = tmpObj.name;
+	debug('temp output directory', process.env.CountersOutputDirectory);
+})
+
+after('Stress automation cleanup', function () {
+	if (getBoolean(process.env.DontCleanupTestGeneratedFiles)) {
+		debug(`process.env.DontCleanupTestGeneratedFiles is set to '${process.env.DontCleanupTestGeneratedFiles}', so skipping temporary files cleanup`);
+	}
+	else {
+		debug(`process.env.DontCleanupTestGeneratedFiles is set to '${process.env.DontCleanupTestGeneratedFiles}', so cleaning up temporary files/directories generated by the tests`);
+		fse.removeSync(process.env.CountersOutputDirectory);
+
+	}
+})
+
+beforeEach('Stress automation beforeEach Test Setup', function () {
+	process.env.CountersCollectionIntervalMs = '10'; // collect every 10 milliseconds
+})
+
+afterEach('Stress automation afterEach Test Cleanup', function () {
+	delete process.env.CountersCollectionIntervalMs;
+})
+
 suite('Stress automation unit tests', function () {
+	// set a higher timeout value
+	const timeout: number = 500000;
+	if (this.timeout() < timeout) {
+		this.timeout(timeout); // increase timeout for each test to complete, when debug logging to console is turned out there can be considerable slow down.
+	}
+
 	//Environment Variable Tests
 	//
 	const absentValues = ['deleted', undefined, null, ''];
 	let testId = 1;
-
-	absentValues.forEach(valueDim => {
-		test(`environmentVariable Test:${testId++}:: environmentVariable SuiteType is set to ##{${valueDim}}## should default to ${SuiteType.Integration}`, async function () {
-			(new StressifyTester()).environmentVariableSuiteTypeTest({ 'environmentVariableValue': valueDim, 'expected': SuiteType.Integration });
-		});
-	});
-
-	const envSuiteTypeTests = [
-		{
-			'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to random string which is not ${SuiteType.Stress} or ${SuiteType.Perf} should default to ${SuiteType.Integration}`,
-			'environmentVariableValue': `${StressifyTester.randomString()}`,
-			'expected': SuiteType.Integration
-		},
-		{
-			'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to ${SuiteType.Stress} string should result in ${SuiteType.Stress}`,
-			'environmentVariableValue': 'sTreSS', // Casing is mixed on purpose
-			'expected': SuiteType.Stress
-		},
-		{
-			'testDescription': `environmentVariable Test:${testId++}::environmentVariable SuiteType set to ${SuiteType.Stress} string should result in ${SuiteType.Perf}`,
-			'environmentVariableValue': 'PErf', // Casing is mixed on purpose
-			'expected': SuiteType.Perf
-		},
-	];
-
-	envSuiteTypeTests.forEach(tst => {
-		test(tst.testDescription, async function () {
-			(new StressifyTester()).environmentVariableSuiteTypeTest(tst);
-		});
-	});
 
 	// Test values to verify StressOptions configured by environment variables and or constructor parameters
 	//
@@ -174,7 +144,7 @@ suite('Stress automation unit tests', function () {
 				stressOptionName: 'dop',
 				tooLow: Math.floor(-0.1 / Math.random()),
 				tooHigh: Math.ceil(Stress.MaxDop + 0.1 / Math.random()),
-				valid: Math.floor(Math.random() * Stress.MaxDop),
+				valid: Math.min(1, Math.floor(Math.random() * Stress.MaxDop)),
 				invalid: 'abracadabra'
 			},
 			{
@@ -229,14 +199,18 @@ suite('Stress automation unit tests', function () {
 			test(`environmentStressOption Test:${testId++}:: environmentVariable ${x.environmentVariableName} set to ##{${invalidValue}}## should result in a ValidationError`, async function () {
 				let origEnvironmentVariableValue: string = process.env[x.environmentVariableName];
 				try {
-					process.env[x.environmentVariableName] = invalidValue;
+					process.env[x.environmentVariableName] = invalidValue.toString();
 					trace(`setting env[${x.environmentVariableName}] to: ${invalidValue}`);
 					new Stress();
 					assert(false, "The test did not throw when it was expected to");
 				}
 				catch (errors) {
 					trace(`Exception caught:${errors}::${jsonDump(errors)}, each is being verified to be ValidationError type and is being swallowed`);
-					[...errors].forEach(err => assert(err instanceof ValidationError));
+					if (isIterable(errors)) {
+						[...errors].forEach(err => assert(err instanceof ValidationError));
+					} else {
+						assert(errors instanceof ValidationError);
+					}
 				}
 				finally {
 					process.env[x.environmentVariableName] = origEnvironmentVariableValue;
@@ -252,7 +226,7 @@ suite('Stress automation unit tests', function () {
 			test(`environmentStressOption Test:${testId++}:: environmentVariable ${x.environmentVariableName} set to ##{${validValue}}## should set the created object's ${x.stressOptionName} property to ${validValue}`, async function () {
 				let origEnvironmentVariableValue: string = process.env[x.environmentVariableName];
 				try {
-					process.env[x.environmentVariableName] = validValue;
+					process.env[x.environmentVariableName] = validValue.toString();
 					trace(`setting env[${x.environmentVariableName}] to: ${validValue}`);
 					const actualOption = (new Stress())[x.stressOptionName];
 					trace(`Actual ${x.stressOptionName} on a newly constructed Stress object evaluated to: ${actualOption}`);
@@ -280,7 +254,11 @@ suite('Stress automation unit tests', function () {
 				}
 				catch (errors) {
 					trace(`Exception caught:${errors}::${jsonDump(errors)}, each is being verified to be ValidationError type and is being swallowed`);
-					[...errors].forEach(err => assert(err instanceof ValidationError));
+					if (isIterable(errors)) {
+						[...errors].forEach(err => assert(err instanceof ValidationError));
+					} else {
+						assert(errors instanceof ValidationError);
+					}
 				}
 			});
 		});
@@ -301,7 +279,7 @@ suite('Stress automation unit tests', function () {
 					origEnvironmentValues[x.environmentVariableName] = process.env[x.environmentVariableName];
 					trace(`origEnvironmentValues[x.environmentVariableName] is now ${origEnvironmentValues[x.environmentVariableName]}`);
 					trace(`setting process.env[x.environmentVariableName] to ${x.valid}`);
-					process.env[x.environmentVariableName] = x.valid;
+					process.env[x.environmentVariableName] = x.valid.toString();
 				});
 				let option: StressOptions = { runtime: undefined, dop: undefined, iterations: undefined, passThreshold: undefined };
 				option[x.stressOptionName] = x.valid;
@@ -348,12 +326,19 @@ suite('Stress automation unit tests', function () {
 		assert.doesNotThrow(async () => {
 			debug('invoking passThresholdMet()');
 			const stressifier = new StressifyTester();
-			let retVal: StressResult = await stressifier.passThresholdMet();
-			debug(`test testStressStats done, total invocations=${stressifier.t}`);
-			debug(`test retVal is ${jsonDump(retVal)}`);
-			assert(retVal.numPasses + retVal.fails.length + retVal.errors.length === StressifyTester.dop * StressifyTester.iter, `total invocations should be ${StressifyTester.dop * StressifyTester.iter}`);
-			assert.equal(retVal.fails.length, stressifier.f, `Number of failures does not match the expected`);
-			assert.equal(retVal.errors.length, stressifier.e, `Number of errors does not match the expected`);
+			try {
+				let retVal: StressResult = await stressifier.passThresholdMet();
+
+				debug(`test passThresholdMet done, total invocations=${stressifier.t}`);
+				debug(`test retVal is ${jsonDump(retVal)}`);
+				assert(retVal.numPasses + retVal.fails.length + retVal.errors.length === StressifyTester.dop * StressifyTester.iter, `total invocations should be ${StressifyTester.dop * StressifyTester.iter}`);
+				assert.equal(retVal.fails.length, stressifier.f, `Number of failures does not match the expected`);
+				assert.equal(retVal.errors.length, stressifier.e, `Number of errors does not match the expected`);
+			}
+			catch (e) {
+				debug(`error:${e}`);
+				throw e;
+			}
 		}, `passThreshold should have been met and the test should have passed`);
 	});
 
@@ -361,15 +346,13 @@ suite('Stress automation unit tests', function () {
 	//
 	test(`Positive Test:${testId++}:: verifies passThreshold failed does result in error being thrown`, async function () {
 		const stressifier = new StressifyTester();
-		let retVal: StressResult;
 		try {
 			debug('invoking passThresholdFailed()');
-			retVal = await stressifier.passThresholdFailed();
+			await stressifier.passThresholdFailed();
 			assert(false, "Error was not thrown when one was expected");
 		}
 		catch (err) {
-			debug(`test testStressStats done, total invocations=${stressifier.t}`);
-			debug(`test retVal is ${jsonDump(retVal)}`);
+			debug(`test passThresholdFailed done, total invocations=${stressifier.t}`);
 			trace(`Exception caught:${err}::${jsonDump(err)}, each is being verified to be AssertionError type and is being swallowed`);
 			assert(err instanceof AssertionError);
 		}
@@ -379,23 +362,25 @@ suite('Stress automation unit tests', function () {
 	//
 	test(`Positive Test:${testId++}:: verifies that timer fires to end the test when runTime expires and number of iterations are not up.`, async function () {
 		debug('invoking timerTest()');
-		let timeOut: number = StressifyTester.runtime; //seconds
+		let timeOut: number = StressifyTester.runtime + 60000; //60 additional seconds beyond expiry of runtime.
 		let timeOutExceeded: boolean = false;
 		let testDone: boolean = false;
-		// setup a timer to flag timeOutExceeded when we have waited for 1.3*timeOut amount of time.
-		// This test also assert that the test is done when this timeout expires.
+		// setup a timer to flag timeOutExceeded when we have waited for timeOut amount of time.
+		// This test also asserts that the test is done when this timeout expires.
 		//
-		setTimeout(() => {
+		let timer: NodeJS.Timer = setTimeout(() => {
 			timeOutExceeded = true;
-			assert(testDone, `test was not done even after ${1.3 * timeOut} seconds when runtime configured was ${timeOut} seconds`)
-		}, timeOut * 1.3 * 1000);
+			assert(testDone, `test was not done even after ${timeOut} seconds when runtime configured was ${StressifyTester.runtime} seconds`)
+		}, timeOut);
 
 		const stressifier = new StressifyTester();
 		let retVal: StressResult = await stressifier.timeOutTest();
 		testDone = true;
+		clearTimeout(timer);
+		timer.unref();
 		debug(`test timeOutTest done, total invocations=${stressifier.t}`);
 		debug(`test retVal is ${jsonDump(retVal)}`);
-		assert(!timeOutExceeded, `timeOut of 1.3 times ${timeOut} seconds has been exceeded while executing the test`);
+		assert(!timeOutExceeded, `timeOut of ${timeOut} seconds has been exceeded while executing the test and configured runtime  was: ${StressifyTester.runtime}`);
 		assert(retVal.numPasses <= Stress.MaxIterations, `total invocations should less than ${Stress.MaxIterations}`);
 	});
 });

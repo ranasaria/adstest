@@ -13,20 +13,26 @@
                 "-r",
                 "ts-node/register",
                 "--timeout",
-                "999999",
+                "99999999",
                 "--colors",
                 "--watch-extensions",
                 "tsx,ts",
                 "-u",
                 "tdd",
                 "**/test/*.test.ts",
+                "-g",
+                "Test:"
             ],
             "env": {
-                "TS_NODE_PROJECT": "src/tsconfig.json"
+                "TS_NODE_PROJECT": "src/tsconfig.json",
+                "CountersCollectionIntervalMs": "10",
+                "DontCleanupTestGeneratedFiles": "false",
+                "DEBUG": ""
             },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",
-            "protocol": "inspector"
+            "protocol": "inspector",
+            "timeout": 9999999
         }
     ]
 }
