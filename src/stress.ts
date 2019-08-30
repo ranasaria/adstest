@@ -259,7 +259,7 @@ export class Stress {
 
 // the singleton Stress object.
 //
-const stresser = new Stress();
+const stressor = new Stress();
 
 /**
  * Decorator Factory to return a decorator function that will stressify any object instance's 'async' method.
@@ -303,13 +303,13 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 				let result: StressResult;
 				if (collectCounters) {
 					await Counters.CollectPerfCounters(async () => {
-						result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+							result = await stressor.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
 						}, 
 						`${target.constructor.name}_${memberName}`,
 						getRootPid(rootPidForCounters)
 					);
 				} else {
-					result = await stresser.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+					result = await stressor.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
 				}
 
 				debug(`Stressified: ${memberName}(${args.join(',')}) returned: ${jsonDump(result)}`);
