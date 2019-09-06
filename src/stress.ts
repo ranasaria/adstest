@@ -6,15 +6,20 @@
  * This module contains all the definitions for Stress decorators and the utility functions and definitions thereof
 */
 'use strict';
-import { Min, Max, IsInt, validateSync, ValidationError, IsDefined } from 'class-validator';
+
+import { IsDefined, IsInt, Max, Min, ValidationError, validateSync } from 'class-validator';
+import { SuiteType, bear, getSuiteType, jsonDump, nullNanUndefinedEmptyCoalesce } from './utils';
+
 import { AssertionError } from 'assert';
-import { getSuiteType, SuiteType, bear, jsonDump, nullNanUndefinedEmptyCoalesce } from './utils';
 import { Counters } from './counters';
-import assert = require('assert');
 import { isString } from 'util';
 
+import assert = require('assert');
+
+import debugLogger = require('debug');
+
 const logPrefix = 'adstest:stress';
-const trace = require('debug')(`${logPrefix}:trace`);
+const trace = debugLogger(`${logPrefix}:trace`);
 
 /**
  * Subclass of Error to wrap any Error objects caught during Stress Execution.
@@ -116,7 +121,7 @@ export class Stress {
 	@Max(Stress.MaxPassThreshold)
 	readonly passThreshold?: number;
 
-	
+
 	/**
 	 * Constructor allows for construction with a bunch of optional parameters
 	 *
@@ -137,9 +142,9 @@ export class Stress {
 
 		// validate this object
 		//
-		let validationErrors: ValidationError[] =  validateSync(this);
+		let validationErrors: ValidationError[] = validateSync(this);
 		if (validationErrors.length > 0) {
-			debug(`throwing validationErrors::${jsonDump(validationErrors)}`);			
+			debug(`throwing validationErrors::${jsonDump(validationErrors)}`);
 			throw validationErrors;
 		}
 
@@ -147,22 +152,22 @@ export class Stress {
 	}
 
 	private static getPassThreshold(input?: number): number {
-		return nullNanUndefinedEmptyCoalesce(input, 
+		return nullNanUndefinedEmptyCoalesce(input,
 			nullNanUndefinedEmptyCoalesce(parseFloat(process.env.StressPassThreshold), DefaultStressOptions.passThreshold));
 	}
 
 	private static getIterations(input?: number): number {
-		return nullNanUndefinedEmptyCoalesce(input, 
+		return nullNanUndefinedEmptyCoalesce(input,
 			nullNanUndefinedEmptyCoalesce(parseInt(process.env.StressIterations), DefaultStressOptions.iterations));
 	}
 
 	private static getDop(input?: number): number {
-		return nullNanUndefinedEmptyCoalesce(input, 
+		return nullNanUndefinedEmptyCoalesce(input,
 			nullNanUndefinedEmptyCoalesce(parseInt(process.env.StressDop), DefaultStressOptions.dop));
 	}
 
 	private static getRuntime(input?: number): number {
-		return nullNanUndefinedEmptyCoalesce(input, 
+		return nullNanUndefinedEmptyCoalesce(input,
 			nullNanUndefinedEmptyCoalesce(parseFloat(process.env.StressRuntime), DefaultStressOptions.runtime));
 	}
 
@@ -179,7 +184,7 @@ export class Stress {
 	 *
 	 * @returns - {@link StressResult}.
 	 */
-	 async run(
+	async run(
 		originalMethod: Function,
 		originalObject: any,
 		functionName: string,
@@ -303,8 +308,8 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
 				let result: StressResult;
 				if (collectCounters) {
 					await Counters.CollectPerfCounters(async () => {
-							result = await stressor.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
-						}, 
+						result = await stressor.run(originalMethod, this, memberName, args, { runtime, dop, iterations, passThreshold });
+					},
 						`${target.constructor.name}_${memberName}`,
 						getRootPid(rootPidForCounters)
 					);
@@ -331,15 +336,15 @@ export function stressify({ runtime, dop, iterations, passThreshold }: StressOpt
  * @param {number} inputPid - 
  * @returns {number}
  */
-function getRootPid (inputPid: number): number {
-	if (inputPid !== null &&  !isNaN(inputPid)) {
+function getRootPid(inputPid: number): number {
+	if (inputPid !== null && !isNaN(inputPid)) {
 		return inputPid;
 	}
 
 	if (!process.env.PerfPidForCollection) {
 		return process.pid;
 	}
-	const pid:number = parseInt(process.env.PerfPidForCollection);
+	const pid: number = parseInt(process.env.PerfPidForCollection);
 	if (isNaN(pid)) {
 		return process.pid;
 	}
