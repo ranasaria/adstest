@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 /**
  * This module contains all the definitions for execution of performance counters collection in a separate local 'node' process.
- * This servers two purposes:
+ * This serves two purposes:
  * 1. Our measurement is tainted by the cpu/memory usage of collection code itself.
  * 2. The host code being measured need not be 'node' target. It could be an electron target for example.
 */
