@@ -2,9 +2,9 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-/**
- * This script is the entry point of the code that is run in a separate 'node' process for collection of performance counters.
-*/
+/** 
+ * This module contains all the definitions for Counters decorators and the utility functions and definitions thereof. 
+ */
 'use strict';
 
 import * as pidusage from 'pidusage';
