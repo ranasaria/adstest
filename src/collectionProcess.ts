@@ -19,7 +19,6 @@ console.log("Process: " + process.argv[1] + " has now started.");
 let counters: Counters;
 const processMessage: NodeJS.MessageListener = async (message: any) => {
 	trace('message from parent:', jsonDump(message));
-	//console.log(`is message ConstructCountersType: ${message is ConstructCountersType}`)
 	if (isConstructCountersType(message)) {
 		message = message as ConstructCountersType;
 		counters = new Counters(message.collectorName, message.pid, message.includeParent, message.skipCurrent, message.countersOptions);
