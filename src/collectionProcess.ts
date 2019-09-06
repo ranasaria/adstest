@@ -13,7 +13,7 @@ import { CollectorMethodType, CollectorResponse, ConstructCountersType, isConstr
 import { Counters } from './counters';
 import { jsonDump } from './utils';
 
-const trace = debugLogger('adstest:remotecollector:trace');
+const trace = debugLogger('adstest:collectionprocess:trace');
 
 console.log("Process: " + process.argv[1] + " has now started.");
 let counters: Counters;
