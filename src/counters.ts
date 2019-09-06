@@ -169,7 +169,7 @@ export class Counters {
 	public readonly includeParent: boolean;
 
 	/**
-	 * whether we should skip process process from the list of processes that we are tracking. 
+	 * whether we should skip current process from the list of processes that we are tracking. 
 	 *
 	 * @type {boolean}
 	 * @memberof Counters
