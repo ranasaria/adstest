@@ -1011,9 +1011,9 @@ node-environment-flags@1.0.5:
     semver "^5.7.0"
 
 node-os-utils@^1.0.7:
-  version "1.0.7"
-  resolved "https://registry.yarnpkg.com/node-os-utils/-/node-os-utils-1.0.7.tgz#43afac0694b04d146820df0490458fcdd0710403"
-  integrity sha1-Q6+sBpSwTRRoIN8EkEWPzdBxBAM=
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/node-os-utils/-/node-os-utils-1.1.0.tgz#97c32beaee88bc175aeb7c262b553ce29ea5f572"
+  integrity sha512-d22SbaE1O2u77fyG79K20s2zsCOLBrrKQTL0HENGVJvz+DsZyn8ar8pySLdpLrwA8MIwFl3jzNrTHF85fMvAow==
 
 node-pre-gyp@^0.11.0:
   version "0.11.0"
