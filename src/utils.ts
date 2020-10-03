@@ -3,8 +3,7 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 'use strict';
-import * as pidusage from 'pidusage';
-const debugLogger = require('debug');
+import debugLogger = require('debug');
 const tracePrefix = 'adstest:utils';
 const debug = debugLogger(tracePrefix);
 const trace = debugLogger(`${tracePrefix}:trace`);
@@ -28,7 +27,6 @@ export function runOnCodeLoad(func: Function, ...args): (memberClass: any, membe
  */
 export enum SuiteType {
 	// Please preserve the capitalized casing and list members in alphabetic order.
-	//
 	Integration = 'Integration',
 	Perf = 'Perf',
 	Stress = 'Stress',
@@ -120,29 +118,6 @@ export function getBoolean(value: boolean | string, defaultValue: boolean = fals
 		default:
 			return false;
 	}
-}
-
-/**
- * Defines an interface to collect the counters for a given process or for the whole system
- *
- * @export
- * @interface CounterStats
- * @param cpu - percentage (from 0 to 100*vcore).
- * @param memory - bytes used by the process.
- * @param ppid - parent process id. undefined for system stats. -1 for totals record for totals record for all the tracked processes.
- * @param pid - process id. primary key. 0 for system stats. -1 for totals record for all the tracked processes.
- * @param ctime - ms user + system time.
- * @param elapsed - ms since the start, of the process/test/system depending on context.
- * @param timestamp - ms since epoch.
- */
-export interface ProcessStats {
-	cpu: number[];
-	memory: number[];
-	ppid: number;
-	pid: number;
-	ctime?: number[];
-	elapsed: number[];
-	timestamp: number[];
 }
 
 /**
@@ -274,13 +249,6 @@ export async function getChildrenTree(inputPid: number = process.pid, getTreeFor
 }
 
 /**
- * 
- */
-export async function getCounters(processesToTrack: ProcessInfo[]): Promise<ProcessStats[]> {
-	return [...await pidusage(processesToTrack.map(p => p.pid))];
-}
-
-/**
  * returns a random string that has {@link length} number of characters.
  * @param length - specifies the length of the random string generated.
  */
@@ -310,4 +278,76 @@ export function toDateTimeString(msSinceEpoch: number = 0): string {
 	const msec = a.getMilliseconds();
 	const time = `${date}-${month}-${year} ${hour}:${min}:${sec}.${("00" + msec).substr(-3)}`;
 	return time;
+}
+
+/**
+ * A class that has the semantics of a deferred promise. This promise does not call resolve/reject in the constructor of the Promise but the
+ * resolve/reject callbacks are made from outside with explicit calls to methods by said name of this object. This is usually done in response
+ * to some event that marks the actual completion of the operation that was in progress. Inspired by 'Rico Kahler' post at https://stackoverflow.com/questions/26150232/resolve-javascript-promise-outside-function-scope/30014830#30014830
+ *
+ * @class DeferredPromise
+ * @template T
+ */
+export class DeferredPromise<T> implements Promise<T> {
+
+	constructor() {
+		this._promise = new Promise<T>((resolve, reject) => {
+			// assign the resolve and reject functions to `this`
+			// making them usable on the class instance
+			this.resolve = resolve;
+			this.reject = reject;
+		});
+		// redirect `then`, `catch` and finally method to the corresponding methods of the this._promise object and bound to the
+		// this._promise object
+		this.then = this._promise.then.bind(this._promise);
+		this.catch = this._promise.catch.bind(this._promise);
+		this.finally = this._promise.finally.bind(this._promise);
+		this[Symbol.toStringTag] = 'DeferredPromise';
+	}
+
+	/**
+	 * toStringTag definition
+	 */
+	[Symbol.toStringTag] = 'DeferredPromise';
+
+	/**
+	Resolves the promise with a value or the result of another promise.
+	@param value - The value to resolve the promise with.
+	*/
+	public resolve: (value?: T | PromiseLike<T>) => void;
+
+	/**
+	Reject the promise with a provided reason or error.
+	@param reason - The reason or error to reject the promise with.
+	*/
+	public reject: (reason?: unknown) => void;
+
+	/**
+	The deferred promise.
+	*/
+	private _promise: Promise<T>;
+
+	/**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+	public then<TResult1 = T, TResult2 = never>(onfulfilled?: (value: T) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>): Promise<TResult1 | TResult2> {
+		throw new Error("Method not implemented here as it gets redirected to the this._promise.then method.");
+	}
+
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @returns A Promise for the completion of the callback.
+     */
+	public catch<TResult = never>(onrejected?: (reason: any) => TResult | PromiseLike<TResult>): Promise<T | TResult> {
+		throw new Error("Method not implemented here as it gets redirected to the this._promise.catch method.");
+	}
+
+	/**
+     * Attaches a callback for execution of finally block of the Promise.
+     * @returns A Promise for the completion of the callback.
+     */
+	public finally(onFinally?: () => void): Promise<T> {
+		throw new Error("Method not implemented here as it gets redirected to the this._promise.finally method.");
+	}
 }

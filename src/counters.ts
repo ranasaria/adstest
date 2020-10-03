@@ -1,27 +1,33 @@
-
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-/**
- * This module contains all the definitions for Counters decorators and the utility functions and definitions thereof
-*/
-import { Min, Max, IsInt, validateSync, ValidationError, IsDefined, IsString, IsNotEmpty, IsBoolean, Matches } from 'class-validator';
-import { jsonDump, nullNanUndefinedEmptyCoalesce, getBoolean, ProcessInfo, getChildrenTree } from './utils';
-import { writeChartToFile, LineData } from './charts';
-import { promisify } from 'util';
-import path = require('path');
-import fs = require('fs');
-import os = require('os');
-import osu = require('node-os-utils');
+/** 
+ * This module contains all the definitions for Counters decorators and the utility functions and definitions thereof. 
+ */
+'use strict';
+
 import * as pidusage from 'pidusage';
-import assert = require('assert');
-import { ma as sma, ema } from 'moving-averages';
+
+import { IsBoolean, IsDefined, IsInt, IsNotEmpty, IsString, Matches, Max, Min, ValidationError, validateSync } from 'class-validator';
+import { LineData, writeChartToFile } from './charts';
+import { ProcessInfo, getBoolean, getChildrenTree, jsonDump, nullNanUndefinedEmptyCoalesce } from './utils';
+import { ema, ma as sma } from 'moving-averages';
 import { mean, quantile } from 'simple-statistics';
+
+import { RemoteCollector } from './remoteCollector';
+import { promisify } from 'util';
+
+import fs = require('fs');
+import osu = require('node-os-utils');
+import path = require('path');
+import os = require('os');
+import assert = require('assert');
+import debugLogger = require('debug');
 
 const writeFileWithPromise = promisify(fs.writeFile);
 const logPrefix = 'adstest:counters';
-const debug = require('debug')(`${logPrefix}`);
+const debug = debugLogger(`${logPrefix}`);
 
 /**
  * A data structure to hold all the computed statistics for a test runs.
@@ -58,6 +64,12 @@ export interface ComputedStatistics {
  * @param elapsed - ms since the start, of the process/test/system depending on context.
  * @param timestamp - ms since epoch.
  */
+
+export type ProcessStatistics = pidusage.Status;
+
+/**
+ * A collection to store various instances of {@link ProcessStatistics} occuring in a time series.
+ */
 export interface ProcessStatisticsCollection {
 	cpu: number[];
 	memory: number[];
@@ -68,16 +80,9 @@ export interface ProcessStatisticsCollection {
 	timestamp: number[];
 }
 
-export interface ProcessStatistics {
-	cpu: number;
-	memory: number;
-	ppid: number;
-	pid: number;
-	ctime?: number;
-	elapsed: number;
-	timestamp: number;
-}
-
+/**
+ * Units of various ProcessStatistics that we are collecting.
+ */
 export const ProcessStatisticsUnits: any = {
 	cpu: '%',
 	memory: 'bytes',
@@ -163,6 +168,15 @@ export class Counters {
 	@IsBoolean()
 	public readonly includeParent: boolean;
 
+	/**
+	 * whether we should skip current process from the list of processes that we are tracking. 
+	 *
+	 * @type {boolean}
+	 * @memberof Counters
+	 */
+	@IsNotEmpty()
+	@IsBoolean()
+	public readonly skipCurrent: boolean;
 
 	/**
 	 * whether we should dump the counters to file identified by the name of the counter.
@@ -250,6 +264,7 @@ export class Counters {
 	  * @param name - Name of this counter. This is used to identify all generated files.
 	  * @param pid -  the root pid of processes that we are tracking
 	  * @param includeParent - flag to indicate if we should include parent of the pid in the process that we are tracking. Including parent implies we track all of the parent's children and not just the process designated by {@link pid}
+	  * @param skipCurrent - flag to indicate if we should skip the pid in the current process from the list of processes that we are tracking. This is useful when we are collecting counters in an external process which is in the processTree of the processes that we are tracking. default is true.
 	  * @param object of @type {CountersOptions} with:
 			* @param collectionIntervalMs - see {@link CountersOptions}.
 			* @param includeMovingAverages - see {@link CountersOptions}.
@@ -257,7 +272,7 @@ export class Counters {
 			* @param dumpToChart - see {@link CountersOptions}.
 			* @param outputDirectory - see {@link CountersOptions}. 
 	  */
-	constructor(name: string, pid: number = process.pid, includeParent: boolean = true, { collectionIntervalMs: collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}) {
+	constructor(name: string, pid: number = process.pid, includeParent: boolean = true, skipCurrent: boolean = true, { collectionIntervalMs: collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}) {
 		const trace = require('debug')(`${logPrefix}:constructor:trace`);
 		trace(`parameters: name=${name}`);
 		trace(`parameters: collectionIntervalMs=${collectionIntervalMs}`);
@@ -268,6 +283,7 @@ export class Counters {
 		this.name = name;
 		this.pid = pid;
 		this.includeParent = includeParent;
+		this.skipCurrent = skipCurrent;
 		this.collectionIntervalMs = Counters.getCollectionInterval(collectionIntervalMs);
 		this.includeMovingAverages = Counters.getIncludeMovingAverages(includeMovingAverages);
 		this.dumpToFile = Counters.getDumpToFile(dumpToFile);
@@ -494,6 +510,7 @@ export class Counters {
 					memory: os.totalmem() - os.freemem(),
 					ppid: Counters.WholeComputerProcessInfo.ppid,
 					pid: Counters.WholeComputerProcessInfo.pid,
+					ctime: undefined,
 					elapsed: os.uptime() * 1000,
 					timestamp: Date.now()
 				};
@@ -547,7 +564,7 @@ export class Counters {
 			let cpu: number = 0;
 			let memory: number = 0;
 			let ctime: number = 0;
-			this.processesToTrack.forEach(proc => {
+			this.processesToTrack.filter(proc => !this.skipCurrent || proc.pid !== process.pid).forEach(proc => {
 				// we have collected anything for this process then add its stats to the totals
 				if (this.collection[proc.pid]) {
 					cpu += this.collection[proc.pid].cpu[i];
@@ -656,8 +673,8 @@ export class Counters {
 	 * @returns {Promise<void>} - returns a promise.
 	 * @memberof Counters
 	 */
-	public static async CollectPerfCounters(closureForCollection: () => void, name: string, pid: number = process.pid, includeParent: boolean = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): Promise<void> {
-		const countersCollector = new Counters(name, pid, includeParent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+	public static async CollectPerfCounters(closureForCollection: () => void, name: string, pid: number = process.pid, includeParent: boolean = true, skipCurrent = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): Promise<void> {
+		const countersCollector = new RemoteCollector(name, pid, includeParent, skipCurrent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
 		await countersCollector.start();
 		await closureForCollection();
 		await countersCollector.stop();
@@ -676,7 +693,7 @@ export class Counters {
  * @param {CountersOptions} [{ collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }={}] - various options to influence collection behavior. See {@link CountersOptions} for details.
  * @returns {(target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor} - returns the decorator method that is modified version of the method being decorated. 
  */
-export function collectPerfCounters(name: string, pid: number = process.pid, includeParent: boolean = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
+export function collectPerfCounters(name: string, pid: number = process.pid, includeParent: boolean = true, skipCurrent: boolean = true, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory }: CountersOptions = {}): (target: any, memberName: string, memberDescriptor: PropertyDescriptor) => PropertyDescriptor {
 	const debug = require('debug')(`${logPrefix}:collectPerfCounters`);
 	// return the function that does the job of collecting the perf counters on an object instance method with decorator @collectPerfCounters
 	//
@@ -699,7 +716,7 @@ export function collectPerfCounters(name: string, pid: number = process.pid, inc
 			//
 			await Counters.CollectPerfCounters(async () => {
 				await originalMethod.apply(this, args);
-			}, name, pid, includeParent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
+			}, name, pid, includeParent, skipCurrent, { collectionIntervalMs, includeMovingAverages, dumpToFile, dumpToChart, outputDirectory });
 		};
 
 		// return the original descriptor unedited.

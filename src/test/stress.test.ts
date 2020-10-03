@@ -27,7 +27,7 @@ interface StressParamType {
 
 class StressifyTester {
 	static dop: number = 10;
-	static iter: number = 10;
+	static iter: number = 2000;
 	static runtime: number = 0.05; //seconds
 
 	t: number = 0;

@@ -5,13 +5,18 @@
 /**
  * This module contains all the definitions for drawing charts and writing them to a file.
 */
+'use strict';
+
+import * as Color from 'color';
+
 import { CanvasRenderService, MimeType } from 'chartjs-node-canvas';
-import { ChartConfiguration } from 'chart.js';
+import { ChartConfiguration, ChartXAxe, ChartYAxe } from 'chart.js';
 import { jsonDump, toDateTimeString } from './utils';
-import { Color } from 'color';
+
+import debugLogger = require('debug');
 
 const logPrefix = 'adstest:counters:charts';
-const debug = require('debug')(logPrefix);
+const debug = debugLogger(logPrefix);
 
 /**
  *
@@ -25,7 +30,7 @@ export interface LineData {
 }
 
 /**
- *
+ * Writes out the chart corresponding to the data provided in the input parameters to this method.
  *
  * @export
  * @param {number[]} xData - array of labels (the x - coordinates/labels of the points)
@@ -37,6 +42,27 @@ export interface LineData {
 export async function writeChartToFile(xData: number[], lines: LineData[], fileType: string = 'png', startTimeStamp: number = 0, xAxisLabel: string = 'elapsed(ms)', file: string = null, title: string = null): Promise<Buffer> {
 	xAxisLabel = `${xAxisLabel}, Start time:${toDateTimeString(startTimeStamp)}`;
 	xData = xData.map(x => x - xData[0]);
+	const yAxes: ChartYAxe = {
+		ticks: {
+			// Include a % sign in the ticks on y-axis
+			callback: function (value, index, values) {
+				return value + '%';
+			}
+		},
+		gridLines: {
+			lineWidth: 10
+		}
+	};
+	const xAxes: ChartXAxe = {
+		gridLines: {
+			lineWidth: 10
+		},
+		display: true,
+		scaleLabel: {
+			display: true,
+			labelString: xAxisLabel
+		},
+	};
 	const configuration: ChartConfiguration = {
 		// See https://www.chartjs.org/docs/latest/configuration        
 		type: 'line',
@@ -50,32 +76,12 @@ export async function writeChartToFile(xData: number[], lines: LineData[], fileT
 				text: title
 			},
 			scales: {
-				xAxes: [{
-					gridLines: {
-						lineWidth: 10
-					},
-					display: true,
-					scaleLabel: {
-						display: true,
-						labelString: xAxisLabel
-					},
-				}],
-				yAxes: [{
-					ticks: {
-						// Include a % sign in the ticks on y-axis
-						callback: function (value, index, values) {
-							return value + '%';
-						}
-					},
-					gridLines: {
-						lineWidth: 10
-					},
-					max: 130
-				}]
+				xAxes: [xAxes],
+				yAxes: [yAxes]
 			},
 		},
 		data: {
-			labels: xData,
+			labels: xData.map(d => d.toString()),
 			datasets: [],
 		}
 	};
@@ -93,7 +99,7 @@ export async function writeChartToFile(xData: number[], lines: LineData[], fileT
 			const randomShift = Math.ceil(Math.random() * 50);
 			label = `${line.label}:${randomShift.toPrecision(3)}%=${min} & zero at:0`;
 			data = line.data.map(y => randomShift);
-		} else { 
+		} else {
 			//convert data values to percentages
 			label = `${line.label}:1%=${((max - min) / 100).toPrecision(3)} & zero at:${min.toPrecision(3)}`;
 			data = line.data.map(y => (y - min) * 100 / (max - min));
